@@ -1,0 +1,149 @@
+{
+  "projectType": "saas",
+  "projectName": "Airbyte Platform",
+  "projectDescription": "Open-source data integration platform for building ELT pipelines from any source to any destination, with 300+ connectors, a built-in scheduler, and Temporal-powered workflow orchestration.",
+  "theme": "sequoia",
+  "primaryColor": "#5d59e6",
+  "lightColor": "#aca4e2",
+  "darkColor": "#0c0c34",
+  "navigation": {
+    "tabs": [
+      {
+        "tab": "Overview",
+        "groups": [
+          {
+            "group": "Get Started",
+            "pages": [
+              "introduction",
+              "quickstart",
+              "core-concepts"
+            ]
+          },
+          {
+            "group": "Architecture",
+            "pages": [
+              "architecture/overview",
+              "architecture/server",
+              "architecture/workers",
+              "architecture/temporal",
+              "architecture/bootloader"
+            ]
+          }
+        ]
+      },
+      {
+        "tab": "Guides",
+        "groups": [
+          {
+            "group": "Deployment",
+            "pages": [
+              "guides/deployment/docker",
+              "guides/deployment/kubernetes-helm",
+              "guides/deployment/configuration"
+            ]
+          },
+          {
+            "group": "Connectors",
+            "pages": [
+              "guides/connectors/overview",
+              "guides/connectors/sources",
+              "guides/connectors/destinations",
+              "guides/connectors/connector-builder"
+            ]
+          },
+          {
+            "group": "Connections & Syncs",
+            "pages": [
+              "guides/connections/overview",
+              "guides/connections/sync-modes",
+              "guides/connections/scheduling",
+              "guides/connections/field-selection"
+            ]
+          },
+          {
+            "group": "Security & Auth",
+            "pages": [
+              "guides/auth/authentication",
+              "guides/auth/oauth",
+              "guides/auth/feature-flags"
+            ]
+          },
+          {
+            "group": "Operations",
+            "pages": [
+              "guides/operations/monitoring",
+              "guides/operations/metrics",
+              "guides/operations/notifications",
+              "guides/operations/audit-logging"
+            ]
+          }
+        ]
+      },
+      {
+        "tab": "API Reference",
+        "groups": [
+          {
+            "group": "API Overview",
+            "pages": [
+              "api-reference/overview",
+              "api-reference/authentication"
+            ]
+          },
+          {
+            "group": "Core Resources",
+            "pages": [
+              "api-reference/workspaces",
+              "api-reference/sources",
+              "api-reference/destinations",
+              "api-reference/connections",
+              "api-reference/jobs"
+            ]
+          },
+          {
+            "group": "Organization & Users",
+            "pages": [
+              "api-reference/organizations",
+              "api-reference/users",
+              "api-reference/permissions"
+            ]
+          },
+          {
+            "group": "Platform",
+            "pages": [
+              "api-reference/connector-definitions",
+              "api-reference/applications",
+              "api-reference/dataplanes"
+            ]
+          }
+        ]
+      }
+    ]
+  },
+  "keyFeatures": [
+    "300+ pre-built connectors for APIs, databases, data warehouses, and data lakes",
+    "Low-code and Python Connector Development Kits (CDKs) for building custom connectors",
+    "Temporal-powered workflow orchestration for reliable sync scheduling",
+    "Kubernetes Helm chart deployment for production-grade infrastructure",
+    "Comprehensive REST API for programmatic control of all platform resources",
+    "Feature flag system supporting LaunchDarkly, config files, and custom backends",
+    "Built-in OAuth support for connector authentication",
+    "Multi-workspace and multi-organization tenancy with RBAC permissions",
+    "Airbyte Embedded for white-label data integration via config templates",
+    "Real-time audit logging and metrics reporting"
+  ],
+  "publicApiSurface": [
+    "GET/POST /sources — Manage data sources",
+    "GET/POST /destinations — Manage data destinations",
+    "GET/POST /connections — Manage sync connections",
+    "GET/POST /jobs — Trigger and monitor sync jobs",
+    "GET/POST /workspaces — Manage workspaces",
+    "GET/POST /organizations — Manage organizations",
+    "GET/POST /permissions — Manage user permissions",
+    "GET/POST /applications — Manage OAuth applications",
+    "GET/POST /dataplanes — Manage data plane infrastructure",
+    "GET/POST /config_templates/sources — Airbyte Embedded config templates",
+    "POST /sources/initiateOAuth — Initiate OAuth for sources",
+    "GET /connector_definitions — List available connector definitions",
+    "GET /health — Platform health check"
+  ]
+}
