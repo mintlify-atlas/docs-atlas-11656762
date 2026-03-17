@@ -1,0 +1,75 @@
+---
+title: "Introduction"
+description: "Airbyte is the open-source data integration platform that moves data from any source to any destination."
+---
+
+<img
+  src="https://assets.website-files.com/605e01bc25f7e19a82e74788/624d9c4a375a55100be6b257_Airbyte_logo_color_dark.svg"
+  alt="Airbyte"
+  style={{ width: "200px", marginBottom: "24px" }}
+/>
+
+# Welcome to Airbyte Platform
+
+Airbyte is an open-source data integration platform that enables you to build reliable ELT pipelines from any source to any destination. With 300+ pre-built connectors, a powerful API, and a visual UI, Airbyte makes data movement accessible to both engineers and data teams.
+
+<CardGroup cols={2}>
+  <Card title="Quickstart" icon="rocket" href="/quickstart">
+    Get Airbyte running and sync your first dataset in minutes
+  </Card>
+  <Card title="Core Concepts" icon="book" href="/core-concepts">
+    Understand workspaces, connections, syncs, and the data model
+  </Card>
+  <Card title="Architecture" icon="server" href="/architecture/overview">
+    Explore how Airbyte's components work together
+  </Card>
+  <Card title="API Reference" icon="code" href="/api-reference/overview">
+    Programmatically manage all Airbyte resources
+  </Card>
+</CardGroup>
+
+## What is Airbyte?
+
+Airbyte is a data integration platform that solves the long tail of data movement. It enables data engineers to move data from any source (databases, APIs, files) to any destination (data warehouses, lakes, databases) with minimal setup.
+
+<CardGroup cols={3}>
+  <Card title="300+ Connectors" icon="plug">
+    Pre-built connectors for the most popular data sources and destinations, with new ones added regularly
+  </Card>
+  <Card title="Open Source" icon="github">
+    Fully open-source under MIT and ELv2 licenses — run it on your own infrastructure
+  </Card>
+  <Card title="Cloud & Self-hosted" icon="cloud">
+    Available as Airbyte Cloud (managed) or self-hosted via Docker/Kubernetes
+  </Card>
+</CardGroup>
+
+## Platform Components
+
+The Airbyte Platform is built from several core components working together:
+
+| Component | Description |
+|-----------|-------------|
+| **airbyte-server** | The main Configuration API server handling all platform management |
+| **airbyte-workers** | Executes sync jobs using Temporal workflow orchestration |
+| **airbyte-webapp** | React/TypeScript web interface for managing connections |
+| **airbyte-bootloader** | Runs database migrations and environment setup at startup |
+| **airbyte-api** | OpenAPI-defined public REST API for programmatic access |
+| **airbyte-featureflag** | Feature flag management with LaunchDarkly and config-file support |
+
+## Deployment Options
+
+<CardGroup cols={2}>
+  <Card title="Docker Compose" icon="docker" href="/guides/deployment/docker">
+    Deploy locally or on a single machine using Docker Compose
+  </Card>
+  <Card title="Kubernetes (Helm)" icon="dharmachakra" href="/guides/deployment/kubernetes-helm">
+    Production-grade deployment on Kubernetes using Helm charts
+  </Card>
+</CardGroup>
+
+## Get Help
+
+- [GitHub Issues](https://github.com/airbytehq/airbyte/issues) — report bugs and track feature requests
+- [Slack Community](https://slack.airbyte.io) — get help from the Airbyte team and community
+- [Contributing Guide](https://github.com/airbytehq/airbyte-platform/blob/main/CONTRIBUTING.md) — learn how to contribute connectors and platform improvements

@@ -1,0 +1,226 @@
+---
+title: "Dataplanes & regions"
+description: "Manage dataplanes and regions for routing data processing in Airbyte."
+---
+
+Dataplanes are compute environments that run Airbyte sync workers. Regions group dataplanes and determine data residency for workspaces.
+
+## Regions
+
+Regions belong to an organization and contain dataplanes.
+
+### Region endpoints
+
+| Method | Path | Description |
+|---|---|---|
+| `GET` | `/regions` | List regions for an organization |
+| `POST` | `/regions` | Create a region |
+| `GET` | `/regions/{regionId}` | Get region details |
+| `PATCH` | `/regions/{regionId}` | Update a region |
+| `DELETE` | `/regions/{regionId}` | Delete a region |
+
+### List regions
+
+**`GET /regions`**
+
+<ParamField query="organizationId" type="string" required>
+  UUID of the organization to list regions for.
+</ParamField>
+
+```bash
+curl --request GET \
+  --url 'https://api.airbyte.com/v1/regions?organizationId=9924bcd0-99be-453d-ba47-c2c9766f7da5' \
+  --header 'Authorization: Bearer <token>'
+```
+
+### Create a region
+
+**`POST /regions`**
+
+<ParamField body="name" type="string" required>
+  Name of the region.
+</ParamField>
+
+<ParamField body="organizationId" type="string" required>
+  UUID of the organization this region belongs to.
+</ParamField>
+
+<ParamField body="enabled" type="boolean">
+  Whether the region is enabled. Default: `true`.
+</ParamField>
+
+```bash
+curl --request POST \
+  --url https://api.airbyte.com/v1/regions \
+  --header 'Authorization: Bearer <token>' \
+  --header 'Content-Type: application/json' \
+  --data '{
+    "name": "us-east-1",
+    "organizationId": "9924bcd0-99be-453d-ba47-c2c9766f7da5",
+    "enabled": true
+  }'
+```
+
+### Region response fields
+
+<ResponseField name="regionId" type="string" required>
+  UUID of the region.
+</ResponseField>
+
+<ResponseField name="name" type="string" required>
+  Name of the region.
+</ResponseField>
+
+<ResponseField name="organizationId" type="string" required>
+  UUID of the owning organization.
+</ResponseField>
+
+<ResponseField name="enabled" type="boolean" required>
+  Whether the region is enabled.
+</ResponseField>
+
+<ResponseField name="createdAt" type="string" required>
+  ISO 8601 timestamp when the region was created.
+</ResponseField>
+
+<ResponseField name="updatedAt" type="string" required>
+  ISO 8601 timestamp of the last update.
+</ResponseField>
+
+### Update a region
+
+**`PATCH /regions/{regionId}`**
+
+<ParamField path="regionId" type="string" required>
+  UUID of the region.
+</ParamField>
+
+<ParamField body="name" type="string">
+  New name for the region.
+</ParamField>
+
+<ParamField body="enabled" type="boolean">
+  Enable or disable the region.
+</ParamField>
+
+### Delete a region
+
+**`DELETE /regions/{regionId}`**
+
+<ParamField path="regionId" type="string" required>
+  UUID of the region to delete.
+</ParamField>
+
+---
+
+## Dataplanes
+
+Dataplanes are the individual compute units within a region. They execute sync workers for connections assigned to their region.
+
+### Dataplane endpoints
+
+| Method | Path | Description |
+|---|---|---|
+| `GET` | `/dataplanes` | List dataplanes |
+| `POST` | `/dataplanes` | Create a dataplane |
+| `GET` | `/dataplanes/{dataplaneId}` | Get dataplane details |
+| `PATCH` | `/dataplanes/{dataplaneId}` | Update a dataplane |
+| `DELETE` | `/dataplanes/{dataplaneId}` | Delete a dataplane |
+
+### List dataplanes
+
+**`GET /dataplanes`**
+
+<ParamField query="regionIds" type="string[]">
+  Filter by region UUIDs. If omitted, all accessible dataplanes are returned.
+</ParamField>
+
+```bash
+curl --request GET \
+  --url 'https://api.airbyte.com/v1/dataplanes' \
+  --header 'Authorization: Bearer <token>'
+```
+
+### Create a dataplane
+
+**`POST /dataplanes`**
+
+<ParamField body="regionId" type="string" required>
+  UUID of the region this dataplane belongs to.
+</ParamField>
+
+<ParamField body="name" type="string" required>
+  Name of the dataplane.
+</ParamField>
+
+<ParamField body="enabled" type="boolean">
+  Whether the dataplane is enabled.
+</ParamField>
+
+```bash
+curl --request POST \
+  --url https://api.airbyte.com/v1/dataplanes \
+  --header 'Authorization: Bearer <token>' \
+  --header 'Content-Type: application/json' \
+  --data '{
+    "regionId": "550e8400-e29b-41d4-a716-446655440000",
+    "name": "primary-worker",
+    "enabled": true
+  }'
+```
+
+### Dataplane response fields
+
+<ResponseField name="dataplaneId" type="string" required>
+  UUID of the dataplane.
+</ResponseField>
+
+<ResponseField name="name" type="string" required>
+  Name of the dataplane.
+</ResponseField>
+
+<ResponseField name="regionId" type="string" required>
+  UUID of the containing region.
+</ResponseField>
+
+<ResponseField name="enabled" type="boolean" required>
+  Whether the dataplane is enabled.
+</ResponseField>
+
+<ResponseField name="createdAt" type="string" required>
+  ISO 8601 timestamp when the dataplane was created.
+</ResponseField>
+
+<ResponseField name="updatedAt" type="string" required>
+  ISO 8601 timestamp of the last update.
+</ResponseField>
+
+### Update a dataplane
+
+**`PATCH /dataplanes/{dataplaneId}`**
+
+<ParamField path="dataplaneId" type="string" required>
+  UUID of the dataplane.
+</ParamField>
+
+<ParamField body="name" type="string">
+  New name for the dataplane.
+</ParamField>
+
+<ParamField body="enabled" type="boolean">
+  Enable or disable the dataplane.
+</ParamField>
+
+### Delete a dataplane
+
+**`DELETE /dataplanes/{dataplaneId}`**
+
+<ParamField path="dataplaneId" type="string" required>
+  UUID of the dataplane to delete.
+</ParamField>
+
+```bash
+curl --request DELETE \
+  --url https://api.airbyte.com/v1/dataplanes/550e8400-e29b-41d4-a716-446655440001 \
+  --header 'Authorization: Bearer <token>'
+```

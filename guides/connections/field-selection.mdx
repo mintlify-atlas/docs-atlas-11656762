@@ -1,0 +1,149 @@
+---
+title: "Field selection"
+description: "Choose which streams and fields Airbyte syncs, reducing data transfer and storage costs."
+---
+
+Field selection (also called column selection) lets you limit which streams and fields within those streams are synced. By default, all streams and all fields in a connection are synced. Enabling field selection reduces the data transferred, lowers destination storage usage, and can improve sync performance.
+
+<Note>
+  Field selection is controlled by the `connection.columnSelection` feature flag. Verify it is enabled in your deployment before relying on it. In the default configuration, this flag is set to `true`.
+</Note>
+
+## Selecting streams
+
+Pass only the streams you want in the `configurations.streams` array. Airbyte syncs only the streams you list. Any stream omitted from the list is not synced.
+
+```json
+{
+  "configurations": {
+    "streams": [
+      { "name": "orders", "syncMode": "incremental_append", "cursorField": ["updated_at"] },
+      { "name": "customers", "syncMode": "full_refresh_overwrite" }
+    ]
+  }
+}
+```
+
+In the example above, Airbyte syncs `orders` and `customers` and ignores all other streams exposed by the source.
+
+## Selecting fields within a stream
+
+Use the `selectedFields` property on a stream configuration to specify which fields to include:
+
+```json
+{
+  "configurations": {
+    "streams": [
+      {
+        "name": "orders",
+        "syncMode": "incremental_append",
+        "cursorField": ["updated_at"],
+        "selectedFields": [
+          { "fieldPath": ["order_id"] },
+          { "fieldPath": ["customer_id"] },
+          { "fieldPath": ["total_amount"] },
+          { "fieldPath": ["updated_at"] }
+        ]
+      }
+    ]
+  }
+}
+```
+
+When `selectedFields` is omitted or is an empty list, **all fields** are synced. When it is provided, only the listed fields are written to the destination.
+
+### Nested fields
+
+For streams with nested schemas, use multiple path elements to reference a nested field:
+
+```json
+{
+  "fieldPath": ["address", "city"]
+}
+```
+
+This selects the `city` property inside the `address` object.
+
+## StreamConfiguration schema reference
+
+The full `StreamConfiguration` object:
+
+| Field | Type | Description |
+|---|---|---|
+| `name` | string | Stream name. Required. |
+| `namespace` | string | Stream namespace. |
+| `syncMode` | enum | The sync mode for this stream. |
+| `cursorField` | string[] | Path to the cursor field for incremental syncs. |
+| `primaryKey` | string[][] | Paths to the primary key fields for deduplication. |
+| `selectedFields` | SelectedFieldInfo[] | Fields to include. If absent, all fields are included. |
+| `mappers` | ConfiguredStreamMapper[] | Data transformations applied before writing to the destination. |
+
+### SelectedFieldInfo
+
+```json
+{
+  "fieldPath": ["column_name"]
+}
+```
+
+`fieldPath` is an array of strings representing the path to the field. For top-level fields, the array has one element. For nested fields, the array contains each level of nesting.
+
+## Field selection with the UI
+
+<Steps>
+  <Step title="Open the connection">
+    In the sidebar, click **Connections** and select the connection you want to edit.
+  </Step>
+  <Step title="Go to the schema tab">
+    Click the **Schema** tab to see all available streams and their fields.
+  </Step>
+  <Step title="Toggle streams and fields">
+    Use the checkboxes to enable or disable individual streams. Expand a stream to toggle individual fields.
+  </Step>
+  <Step title="Save and sync">
+    Click **Save changes**. The next sync will apply your field selection.
+  </Step>
+</Steps>
+
+## Stream mappers
+
+In addition to selecting fields, you can apply transformations to fields using stream mappers. The supported mapper types are:
+
+| Mapper type | Description |
+|---|---|
+| `hashing` | Hash a field value using MD5, SHA-256, or another algorithm. |
+| `field-renaming` | Rename a field in the destination. |
+| `row-filtering` | Exclude rows that match a condition. |
+| `encryption` | Encrypt a field using RSA or AES before writing to the destination. |
+| `field-filtering` | Remove a field entirely from the output. |
+
+Mappers are applied in order before the record is written to the destination:
+
+```json
+{
+  "name": "users",
+  "syncMode": "full_refresh_overwrite",
+  "mappers": [
+    {
+      "type": "hashing",
+      "mapperConfiguration": {
+        "targetField": "email",
+        "method": "SHA-256",
+        "fieldNameSuffix": "_hashed"
+      }
+    },
+    {
+      "type": "field-filtering",
+      "mapperConfiguration": {
+        "targetField": "ssn"
+      }
+    }
+  ]
+}
+```
+
+## Impact on sync performance
+
+- Selecting fewer fields reduces the volume of data written to the destination, lowering both egress costs and storage costs.
+- For API-based sources, field selection happens after Airbyte reads the record from the source. The source API still returns the full record; Airbyte drops the unselected fields before writing.
+- For database sources (JDBC), some connectors can push field selection down to the query, reducing the data read from the source.

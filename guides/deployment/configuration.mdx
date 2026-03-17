@@ -1,0 +1,327 @@
+---
+title: "Configuration reference"
+description: "Environment variables and Helm values for configuring Airbyte services."
+---
+
+Airbyte is configured through environment variables. In Kubernetes deployments these are managed by the Helm chart and rendered into a ConfigMap (`airbyte-env`) and a Secret (`airbyte-secrets`). In Docker Compose deployments they are set in a `.env` file.
+
+This page documents the key variables grouped by concern, derived from the Helm `values.yaml` configuration system.
+
+## Database
+
+Airbyte requires a PostgreSQL database for configuration, jobs, and history.
+
+| Helm value | Environment variable | Description | Default |
+|---|---|---|---|
+| `global.database.type` | — | `internal` or `external` | `internal` |
+| `global.database.host` | `DATABASE_HOST` | PostgreSQL host | Internal service |
+| `global.database.port` | `DATABASE_PORT` | PostgreSQL port | `5432` |
+| `global.database.name` | `DATABASE_DB` | Database name | — |
+| `global.database.user` | `DATABASE_USER` | Database user | — |
+| `global.database.password` | `DATABASE_PASSWORD` | Database password | — |
+| `global.database.secretName` | — | Kubernetes Secret containing credentials | — |
+
+For replica reads (optional):
+
+```yaml
+global:
+  database:
+    replica:
+      url: "jdbc:postgresql://replica-host:5432/airbyte"
+      user: ""
+      password: ""
+```
+
+Database migrations run automatically at startup via the bootloader. You can control the minimum required migration version:
+
+```yaml
+global:
+  migrations:
+    runAtStartup: true
+    configDb:
+      minimumFlywayMigrationVersion: ""
+    jobsDb:
+      minimumFlywayMigrationVersion: ""
+```
+
+## Temporal
+
+Airbyte uses Temporal for workflow orchestration. By default, the Helm chart deploys a bundled Temporal instance (`temporalio/auto-setup:1.27.2`) on port `7233`.
+
+| Helm value | Environment variable | Description | Default |
+|---|---|---|---|
+| `temporal.enabled` | — | Deploy bundled Temporal | `true` |
+| `global.temporal.sdk.rpc.timeout` | `TEMPORAL_RPC_TIMEOUT` | Temporal SDK RPC timeout | `120s` |
+| `global.temporal.sdk.rpc.longPollTimeout` | `TEMPORAL_SDK_RPC_LONG_POLL_TIMEOUT` | Long poll timeout | `140s` |
+| `global.temporal.sdk.rpc.queryTimeout` | `TEMPORAL_SDK_RPC_QUERY_TIMEOUT` | Query timeout | `20s` |
+
+### Temporal Cloud
+
+To connect to Temporal Cloud instead of the bundled instance:
+
+```yaml
+global:
+  temporal:
+    cloud:
+      enabled: true
+      host: "<namespace>.tmprl.cloud:7233"
+      namespace: "<namespace>.<account>"
+      clientCertSecretKey: TEMPORAL_CLOUD_CLIENT_CERT
+      clientKeySecretKey: TEMPORAL_CLOUD_CLIENT_KEY
+    secretName: "airbyte-temporal-secrets"
+```
+
+## Storage
+
+Airbyte uses object storage for sync logs, state files, and workload output. The storage type is controlled by `global.storage.type`.
+
+<Tabs>
+  <Tab title="Minio (default)">
+    ```yaml
+    global:
+      storage:
+        type: minio
+        minio:
+          accessKeyId: minio
+          secretAccessKey: minio123
+        bucket:
+          log: airbyte-bucket
+          auditLogging: airbyte-bucket
+          state: airbyte-bucket
+          workloadOutput: airbyte-bucket
+          activityPayload: airbyte-bucket
+    ```
+  </Tab>
+  <Tab title="S3">
+    ```yaml
+    global:
+      storage:
+        type: s3
+        s3:
+          region: us-east-1
+          authenticationType: credentials  # or "instanceProfile"
+          accessKeyId: ""
+          secretAccessKey: ""
+        secretName: "airbyte-storage-secrets"
+        bucket:
+          log: airbyte-logs
+          state: airbyte-state
+          workloadOutput: airbyte-workload-output
+    ```
+  </Tab>
+  <Tab title="GCS">
+    ```yaml
+    global:
+      storage:
+        type: gcs
+        gcs:
+          projectId: my-project
+          credentialsJson: "<base64-encoded>"
+          credentialsJsonPath: /secrets/gcs-log-creds/gcp.json
+        bucket:
+          log: airbyte-logs
+          state: airbyte-state
+          workloadOutput: airbyte-workload-output
+    ```
+  </Tab>
+  <Tab title="Azure">
+    ```yaml
+    global:
+      storage:
+        type: azure
+        azure:
+          connectionString: "DefaultEndpointsProtocol=https;..."
+          # Or reference an existing secret:
+          # connectionStringSecretKey: my-azure-connection-string
+        bucket:
+          log: airbyte-logs
+          state: airbyte-state
+          workloadOutput: airbyte-workload-output
+    ```
+  </Tab>
+</Tabs>
+
+## Auth
+
+Authentication is enabled by default. Airbyte uses Keycloak as the identity provider.
+
+```yaml
+global:
+  auth:
+    enabled: true
+
+    # Initial admin user
+    instanceAdmin:
+      firstName: ""
+      lastName: ""
+      emailSecretKey: "instance-admin-email"
+      passwordSecretKey: "instance-admin-password"
+
+    # JWT signing secret
+    security:
+      secretName: "airbyte-config-secrets"
+      jwtSignatureSecretKey: "jwt-signature-secret"
+      cookieSecureSetting: true
+      cookieSameSiteSetting: Strict
+
+    # SSO (Enterprise only)
+    identityProvider:
+      secretName: ""
+      type: ""  # "oidc" or "generic-oidc"
+```
+
+## Logging
+
+| Helm value | Environment variable | Description | Default |
+|---|---|---|---|
+| `global.logging.level` | `LOG_LEVEL` | Log level for all services | `info` |
+| `global.logging.httpAccessLogsEnabled` | `HTTP_ACCESS_LOGS_ENABLED` | Enable HTTP access logs | `false` |
+| `global.logging.log4jConfigFile` | `LOG4J_CONFIG_FILE` | Custom Log4j configuration file path | — |
+
+Per-component log level overrides:
+
+```yaml
+server:
+  log:
+    level: INFO
+
+worker:
+  log:
+    level: INFO
+```
+
+## Feature flags
+
+Airbyte supports two feature flag backends.
+
+| Helm value | Description | Default |
+|---|---|---|
+| `global.featureFlags.client` | Backend type: `configfile` or `launchdarkly` | `configfile` |
+| `global.featureFlags.secretName` | Secret containing feature flag configuration | — |
+
+```yaml
+global:
+  featureFlags:
+    client: configfile
+    configfile: {}
+
+    # For LaunchDarkly:
+    # client: launchdarkly
+    # launchdarkly:
+    #   key: "sdk-xxxx"
+```
+
+## Secrets manager
+
+Airbyte can store connector credentials in an external secrets manager instead of the internal database.
+
+```yaml
+global:
+  secretsManager:
+    enabled: false
+    # One of: VAULT, GOOGLE_SECRET_MANAGER, AWS_SECRET_MANAGER, AZURE_KEY_VAULT
+    type: ""
+
+    # AWS Secrets Manager
+    # awsSecretManager:
+    #   region: us-east-1
+    #   authenticationType: credentials  # or "instanceProfile"
+    #   tags:
+    #     - key: team
+    #       value: data-engineering
+    #   kms: "arn:aws:kms:..."
+
+    # Google Secret Manager
+    # googleSecretManager:
+    #   projectId: my-project
+    #   region: us-central1
+    #   credentialsSecretKey: gcp.json
+
+    # HashiCorp Vault
+    # vault:
+    #   address: "https://vault.example.com"
+    #   prefix: "airbyte"
+    #   authToken: ""
+    #   authTokenSecretKey: ""
+
+    # Azure Key Vault
+    # azureKeyVault:
+    #   tenantId: ""
+    #   vaultUrl: ""
+    #   clientId: ""
+    #   clientSecret: ""
+```
+
+## Metrics
+
+Airbyte can export metrics via OTLP or StatsD.
+
+```yaml
+global:
+  metrics:
+    enabled: false
+    step: ""
+
+    otlp:
+      enabled: false
+      collectorEndpoint: "http://otel-collector:4317"
+
+    statsd:
+      enabled: false
+      flavor: ""  # e.g. "datadog"
+      host: "localhost"
+      port: "8125"
+
+    otel:
+      exporter:
+        name: otlp
+        protocol: grpc
+        timeout: 30000
+        metricExportInterval: 10000
+```
+
+## Workloads
+
+Workloads are connector job containers launched by the workload launcher.
+
+```yaml
+global:
+  workloads:
+    namespace: jobs
+    queues:
+      check: [CHECK_CONNECTION]
+      discover: [DISCOVER_SCHEMA]
+      sync: [SYNC]
+    resources:
+      useConnectorResourceDefaults: true
+      mainContainer:
+        cpu: {}
+        memory: {}
+      replication:
+        cpu: {}
+        memory: {}
+      fileTransfer:
+        storage:
+          request: 5G
+          limit: 5G
+```
+
+## Per-service environment variables
+
+You can inject additional environment variables into any specific service pod:
+
+```yaml
+server:
+  env_vars:
+    MY_SERVER_VAR: "value"
+  secrets:
+    MY_SERVER_SECRET: "secret-value"
+  extraEnv:
+    - name: POSTGRES_USER
+      valueFrom:
+        secretKeyRef:
+          name: airbyte-secrets
+          key: DATABASE_USER
+```
+
+The same pattern (`env_vars`, `secrets`, `extraEnv`) applies to `worker`, `workloadLauncher`, `webapp`, `airbyteBootloader`, and other components.

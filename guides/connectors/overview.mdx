@@ -1,0 +1,103 @@
+---
+title: "Connectors overview"
+description: "Understand what connectors are, how they work, and the available connector types in Airbyte."
+---
+
+A connector is a Docker image that implements the Airbyte protocol. Connectors are the building blocks of every sync: a source connector reads data from an external system, and a destination connector writes it somewhere else.
+
+## Sources and destinations
+
+<CardGroup cols={2}>
+  <Card title="Source connectors" icon="database" href="/guides/connectors/sources">
+    Read data from APIs, databases, files, and SaaS applications. Examples: Postgres, Salesforce, Google Ads, GitHub, S3.
+  </Card>
+  <Card title="Destination connectors" icon="warehouse" href="/guides/connectors/destinations">
+    Write data to data warehouses, databases, and object stores. Examples: BigQuery, Snowflake, Postgres, S3, Redshift.
+  </Card>
+</CardGroup>
+
+## How connectors work
+
+Every connector is a self-contained Docker image. At runtime Airbyte calls four standard commands against the image:
+
+| Command | Purpose |
+|---|---|
+| `spec` | Return the connector's configuration schema (JSON Schema). |
+| `check` | Validate that the provided credentials can connect to the source or destination. |
+| `discover` | Return the catalog of available streams and their schemas. |
+| `read` / `write` | Read records from the source or write records to the destination. |
+
+The Airbyte platform handles scheduling, state management, error handling, and log storage. The connector only needs to implement the protocol.
+
+## Connector types
+
+<CardGroup cols={2}>
+  <Card title="Low-code CDK" icon="wand-magic-sparkles" href="/guides/connectors/connector-builder">
+    Build connectors for REST APIs using a declarative YAML manifest. No Python required. Available in the UI via the Connector Builder.
+  </Card>
+  <Card title="Python CDK" icon="python">
+    Write a connector in Python using the `airbyte-cdk` library. Best for complex sources requiring custom pagination, incremental state, or authentication logic.
+  </Card>
+  <Card title="Java CDK" icon="coffee">
+    Write a connector in Java. Used for database sources and destinations that require JDBC drivers.
+  </Card>
+  <Card title="Custom / Docker" icon="docker">
+    Package any executable as a Docker image that implements the Airbyte protocol. Use any language.
+  </Card>
+</CardGroup>
+
+## Connector registry
+
+Airbyte ships with a built-in connector registry baked into the server JAR. This registry enables Airbyte to start with pre-populated connector definitions and supports air-gapped deployments.
+
+By default, the registry seed provider is set to `remote`:
+
+```yaml
+global:
+  connectorRegistry:
+    seedProvider: remote
+```
+
+Connector definitions include a name, Docker image, version, and configuration schema (`ConnectorDefinitionResponse`):
+
+```json
+{
+  "id": "18dccc91-0ab1-4f72-9ed7-0b8fc27c5826",
+  "name": "Postgres",
+  "connectorDefinitionType": "source",
+  "version": "0.2.0"
+}
+```
+
+## Connector versioning
+
+Each connector definition is pinned to a specific Docker image tag. You can:
+
+- **Use the latest version** by allowing the platform to auto-upgrade connector versions.
+- **Pin a version** by locking a connector definition to a specific image tag in the UI or via the API.
+
+<Note>
+  Connector updates do not automatically change existing connections. You must explicitly upgrade a connector on a connection to use a newer version.
+</Note>
+
+## Finding available connectors
+
+You can browse connectors in three ways:
+
+1. **Web UI**: Go to **Sources** or **Destinations** and click **New source** / **New destination** to see the full connector catalog.
+2. **Connector Builder**: Navigate to **Builder** in the sidebar to create a custom low-code connector.
+3. **API**: Use the `GET /sources` or `GET /destinations` endpoints to list configured connectors, or query connector definitions directly.
+
+## Related guides
+
+<CardGroup cols={2}>
+  <Card title="Source connectors" icon="plug" href="/guides/connectors/sources">
+    Create and manage source connectors.
+  </Card>
+  <Card title="Destination connectors" icon="database" href="/guides/connectors/destinations">
+    Create and manage destination connectors.
+  </Card>
+  <Card title="Connector Builder" icon="wrench" href="/guides/connectors/connector-builder">
+    Build a custom low-code connector in the UI.
+  </Card>
+</CardGroup>

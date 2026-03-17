@@ -1,0 +1,204 @@
+---
+title: "Jobs"
+description: "Trigger, list, inspect, and cancel sync jobs for Airbyte connections."
+---
+
+Jobs represent execution runs against a connection. You can trigger syncs, resets, refreshes, and clears, and monitor their progress.
+
+## Job types
+
+| Type | Description |
+|---|---|
+| `sync` | Incrementally or fully sync data from source to destination |
+| `reset` | Clear destination data and perform a full sync from the beginning |
+| `refresh` | Re-sync data for selected streams |
+| `clear` | Clear destination data without re-syncing |
+
+## Job statuses
+
+| Status | Description |
+|---|---|
+| `pending` | Job is queued and waiting to run |
+| `running` | Job is actively executing |
+| `incomplete` | Job started but did not complete normally |
+| `failed` | Job completed with errors |
+| `succeeded` | Job completed successfully |
+| `cancelled` | Job was cancelled before completing |
+
+## Endpoints
+
+| Method | Path | Description |
+|---|---|---|
+| `GET` | `/jobs` | List jobs |
+| `POST` | `/jobs` | Create (trigger) a job |
+| `GET` | `/jobs/{jobId}` | Get job details |
+| `DELETE` | `/jobs/{jobId}` | Cancel a running job |
+
+## List jobs
+
+**`GET /jobs`**
+
+<ParamField query="connectionId" type="string">
+  Filter jobs by connection UUID.
+</ParamField>
+
+<ParamField query="workspaceIds" type="string[]">
+  Filter jobs by workspace UUIDs.
+</ParamField>
+
+<ParamField query="jobType" type="string">
+  Filter by job type: `sync`, `reset`, `refresh`, or `clear`.
+</ParamField>
+
+<ParamField query="status" type="string">
+  Filter by status: `pending`, `running`, `incomplete`, `failed`, `succeeded`, or `cancelled`.
+</ParamField>
+
+<ParamField query="createdAtStart" type="string">
+  Filter by creation time start (ISO 8601 / Unix ms).
+</ParamField>
+
+<ParamField query="createdAtEnd" type="string">
+  Filter by creation time end (ISO 8601 / Unix ms).
+</ParamField>
+
+<ParamField query="updatedAtStart" type="string">
+  Filter by last update time start.
+</ParamField>
+
+<ParamField query="updatedAtEnd" type="string">
+  Filter by last update time end.
+</ParamField>
+
+<ParamField query="orderBy" type="string">
+  Field and direction for ordering results. Format: `fieldName|ASC` or `fieldName|DESC`. Example: `updatedAt|DESC`.
+</ParamField>
+
+<ParamField query="limit" type="integer" default="20">
+  Maximum results to return. Range: 1–100.
+</ParamField>
+
+<ParamField query="offset" type="integer" default="0">
+  Offset for pagination.
+</ParamField>
+
+```bash
+curl --request GET \
+  --url 'https://api.airbyte.com/v1/jobs?connectionId=e735894a-e773-4938-969f-45f53957b75b&limit=20' \
+  --header 'Authorization: Bearer <token>'
+```
+
+```json
+{
+  "next": "https://api.airbyte.com/v1/jobs?limit=5&offset=10",
+  "previous": "https://api.airbyte.com/v1/jobs?limit=5&offset=0",
+  "data": [
+    {
+      "jobId": 1234,
+      "status": "running",
+      "jobType": "sync",
+      "startTime": "2023-03-25T01:30:50Z",
+      "connectionId": "e735894a-e773-4938-969f-45f53957b75b"
+    }
+  ]
+}
+```
+
+## Create a job
+
+**`POST /jobs`**
+
+Triggers a new job on the specified connection.
+
+<ParamField body="connectionId" type="string" required>
+  UUID of the connection to run the job against.
+</ParamField>
+
+<ParamField body="jobType" type="string" required>
+  Type of job to run: `sync`, `reset`, `refresh`, or `clear`.
+</ParamField>
+
+```bash
+curl --request POST \
+  --url https://api.airbyte.com/v1/jobs \
+  --header 'Authorization: Bearer <token>' \
+  --header 'Content-Type: application/json' \
+  --data '{
+    "connectionId": "e735894a-e773-4938-969f-45f53957b75b",
+    "jobType": "sync"
+  }'
+```
+
+### Response
+
+<ResponseField name="jobId" type="integer" required>
+  Numeric ID of the job.
+</ResponseField>
+
+<ResponseField name="status" type="string" required>
+  Initial job status (usually `pending` or `running`).
+</ResponseField>
+
+<ResponseField name="jobType" type="string" required>
+  Type of job: `sync`, `reset`, `refresh`, or `clear`.
+</ResponseField>
+
+<ResponseField name="startTime" type="string" required>
+  ISO 8601 timestamp when the job started.
+</ResponseField>
+
+<ResponseField name="connectionId" type="string" required>
+  UUID of the connection this job runs against.
+</ResponseField>
+
+<ResponseField name="lastUpdatedAt" type="string">
+  ISO 8601 timestamp of the last status update.
+</ResponseField>
+
+<ResponseField name="duration" type="string">
+  Duration of the sync in ISO 8601 duration format, e.g. `PT8H6M12S`.
+</ResponseField>
+
+<ResponseField name="bytesSynced" type="integer">
+  Total bytes transferred during the sync.
+</ResponseField>
+
+<ResponseField name="rowsSynced" type="integer">
+  Total rows transferred during the sync.
+</ResponseField>
+
+## Get a job
+
+**`GET /jobs/{jobId}`**
+
+<ParamField path="jobId" type="integer" required>
+  Numeric ID of the job.
+</ParamField>
+
+```bash
+curl --request GET \
+  --url https://api.airbyte.com/v1/jobs/1234 \
+  --header 'Authorization: Bearer <token>'
+```
+
+## Cancel a job
+
+**`DELETE /jobs/{jobId}`**
+
+Cancels a running or pending job.
+
+<ParamField path="jobId" type="integer" required>
+  Numeric ID of the job to cancel.
+</ParamField>
+
+<Warning>
+  Cancelling a job stops the sync in progress. Data already written to the destination is not rolled back.
+</Warning>
+
+```bash
+curl --request DELETE \
+  --url https://api.airbyte.com/v1/jobs/1234 \
+  --header 'Authorization: Bearer <token>'
+```
+
+Returns the job object with status `cancelled`.

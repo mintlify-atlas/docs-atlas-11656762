@@ -1,0 +1,116 @@
+---
+title: "Architecture overview"
+description: "A high-level description of Airbyte's platform components and how they interact."
+---
+
+Airbyte is composed of several services that work together to manage connector configuration, schedule and execute sync jobs, and serve the user interface.
+
+## Components
+
+<Columns cols={2}>
+  <Card title="Server" icon="server" href="/architecture/server">
+    Implements the Configuration API. Handles all CRUD operations for sources, destinations, connections, and workspaces. Delegates requests to resource-specific handlers.
+  </Card>
+  <Card title="Workers" icon="gear" href="/architecture/workers">
+    Executes sync, check, and discover jobs. Orchestrated by Temporal workflows. Manages job lifecycle, retries, and status updates.
+  </Card>
+  <Card title="Bootloader" icon="play" href="/architecture/bootloader">
+    Runs at startup. Initializes databases, applies Flyway migrations, validates upgrade compatibility, and seeds default workspace and deployment records.
+  </Card>
+  <Card title="Temporal" icon="clock" href="/architecture/temporal">
+    Workflow orchestration engine used to ensure job reliability and durability at scale. Manages scheduling, retries, and long-running workflow state.
+  </Card>
+  <Card title="Webapp" icon="browser">
+    React-based frontend served at port 8000. Communicates with the server via the Configuration API and the public Airbyte API.
+  </Card>
+  <Card title="API" icon="code">
+    OpenAPI-defined HTTP API hosted at `https://api.airbyte.com/v1`. Supports programmatic control of Cloud, OSS, and Enterprise deployments.
+  </Card>
+</Columns>
+
+---
+
+## How the components interact
+
+```
+┌─────────────┐     HTTP      ┌──────────────────┐
+│   Webapp /  │ ────────────► │  airbyte-server  │
+│  API Client │               │ (Configuration   │
+└─────────────┘               │      API)        │
+                              └────────┬─────────┘
+                                       │ creates/updates
+                                       │ job records
+                              ┌────────▼─────────┐
+                              │    Database      │
+                              │ (configs + jobs) │
+                              └────────┬─────────┘
+                                       │ polled by
+                              ┌────────▼─────────┐
+                              │ airbyte-workers  │
+                              │  (Temporal)      │
+                              └────────┬─────────┘
+                                       │ runs
+                              ┌────────▼─────────┐
+                              │ Connector Docker │
+                              │    Containers    │
+                              └──────────────────┘
+```
+
+1. A user or API client requests a sync via the server.
+2. The server creates a job record in the database.
+3. The workers pick up the job through a Temporal workflow (`ConnectionManagerWorkflow`).
+4. The workers launch connector Docker containers for the source and destination.
+5. Status and logs are written back to the database; the server surfaces them through the API.
+
+---
+
+## Deployment topologies
+
+<Tabs>
+  <Tab title="Single node (Docker Compose)">
+    All components run as Docker containers on a single host. This is the recommended setup for local development and small-scale deployments.
+
+    ```bash
+    docker compose up
+    ```
+
+    - Server, workers, webapp, Temporal, and the database all run on one machine.
+    - Suitable for teams syncing up to tens of millions of records per month.
+    - Access the UI at `http://localhost:8000`.
+  </Tab>
+  <Tab title="Kubernetes (Helm)">
+    Each component runs as a separate Kubernetes Deployment or Job. This is the recommended setup for production workloads.
+
+    The official Helm chart is versioned separately from the platform (`chart version: 1.1.0`). Deploy with:
+
+    ```bash
+    helm repo add airbyte https://airbytehq.github.io/helm-charts
+    helm install airbyte airbyte/airbyte
+    ```
+
+    - Workers can scale horizontally to handle concurrent syncs.
+    - The bootloader runs as an init container or a Kubernetes Job before other services start.
+    - Temporal can be deployed as a dependency or connected to an external Temporal cluster.
+  </Tab>
+</Tabs>
+
+---
+
+## Startup sequence
+
+When Airbyte starts (in any topology), the bootloader must complete successfully before the server or workers become active:
+
+<Steps>
+  <Step title="Bootloader runs">
+    Initializes the configs and jobs databases, applies Flyway migrations, validates protocol version constraints, and seeds required default records.
+  </Step>
+  <Step title="Server starts">
+    The Micronaut-based server starts, registers all API routes, and begins accepting HTTP requests.
+  </Step>
+  <Step title="Workers start">
+    Workers connect to the Temporal cluster and begin polling task queues for pending jobs.
+  </Step>
+  <Step title="Webapp becomes available">
+    The React frontend is served and connects to the server API.
+  </Step>
+</Steps>

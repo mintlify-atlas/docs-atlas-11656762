@@ -1,0 +1,120 @@
+---
+title: "Organizations"
+description: "List organizations for the current user and manage organization-level OAuth credentials."
+---
+
+Organizations are the top-level grouping in Airbyte. Each organization contains workspaces and users.
+
+## Endpoints
+
+| Method | Path | Description |
+|---|---|---|
+| `GET` | `/organizations` | List organizations for the current user |
+| `PUT` | `/organizations/{organizationId}/oauthCredentials` | Create or update OAuth credentials |
+| `DELETE` | `/organizations/{organizationId}/oauthCredentials/{actorType}/{name}` | Delete OAuth credential override |
+
+## List organizations
+
+**`GET /organizations`**
+
+Lists all organizations the authenticated user belongs to.
+
+```bash
+curl --request GET \
+  --url https://api.airbyte.com/v1/organizations \
+  --header 'Authorization: Bearer <token>'
+```
+
+### Response
+
+<ResponseField name="data" type="object[]" required>
+  Array of organization objects.
+  <Expandable title="organization object">
+    <ResponseField name="organizationId" type="string" required>
+      UUID of the organization.
+    </ResponseField>
+    <ResponseField name="organizationName" type="string" required>
+      Name of the organization.
+    </ResponseField>
+    <ResponseField name="email" type="string" required>
+      Contact email for the organization.
+    </ResponseField>
+  </Expandable>
+</ResponseField>
+
+```json
+{
+  "data": [
+    {
+      "organizationId": "9924bcd0-99be-453d-ba47-c2c9766f7da5",
+      "organizationName": "Acme Corp",
+      "email": "admin@acme.com"
+    }
+  ]
+}
+```
+
+## Create or update OAuth credentials
+
+**`PUT /organizations/{organizationId}/oauthCredentials`**
+
+Creates or updates OAuth credentials at the organization level to override the Airbyte-provided credentials for a specific connector.
+
+<ParamField path="organizationId" type="string" required>
+  UUID of the organization.
+</ParamField>
+
+<ParamField body="actorType" type="string" required>
+  Either `source` or `destination`.
+</ParamField>
+
+<ParamField body="name" type="string" required>
+  The connector name, e.g. `google-ads`.
+</ParamField>
+
+<ParamField body="configuration" type="object" required>
+  OAuth credential configuration. Schema matches the connector's `OAuthConfigSpecification.oauthUserInputFromConnectorConfigSpecification`.
+</ParamField>
+
+```bash
+curl --request PUT \
+  --url https://api.airbyte.com/v1/organizations/9924bcd0-99be-453d-ba47-c2c9766f7da5/oauthCredentials \
+  --header 'Authorization: Bearer <token>' \
+  --header 'Content-Type: application/json' \
+  --data '{
+    "actorType": "source",
+    "name": "google-ads",
+    "configuration": {
+      "client_id": "YOUR_CLIENT_ID",
+      "client_secret": "YOUR_CLIENT_SECRET"
+    }
+  }'
+```
+
+Returns `200` on success.
+
+## Delete OAuth credential override
+
+**`DELETE /organizations/{organizationId}/oauthCredentials/{actorType}/{name}`**
+
+Deletes the organization-level OAuth credential override for a specific connector, reverting to Airbyte-provided credentials.
+
+<ParamField path="organizationId" type="string" required>
+  UUID of the organization.
+</ParamField>
+
+<ParamField path="actorType" type="string" required>
+  Either `source` or `destination`.
+</ParamField>
+
+<ParamField path="name" type="string" required>
+  The connector name, e.g. `google-ads`.
+</ParamField>
+
+```bash
+curl --request DELETE \
+  --url https://api.airbyte.com/v1/organizations/9924bcd0-99be-453d-ba47-c2c9766f7da5/oauthCredentials/source/google-ads \
+  --header 'Authorization: Bearer <token>'
+```
+
+Returns `204 No Content` on success.

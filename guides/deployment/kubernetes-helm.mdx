@@ -1,0 +1,322 @@
+---
+title: "Deploy on Kubernetes with Helm"
+description: "Install Airbyte on a Kubernetes cluster using the official Helm chart."
+---
+
+The Airbyte Helm chart deploys the full platform on Kubernetes, including the server, workers, Temporal, web UI, and optional supporting services.
+
+## Prerequisites
+
+<CardGroup cols={2}>
+  <Card title="Kubernetes 1.19+" icon="kubernetes">
+    Any conformant cluster: EKS, GKE, AKS, or self-managed.
+  </Card>
+  <Card title="Helm 3" icon="helm">
+    Verify with `helm version`. Helm 2 is not supported.
+  </Card>
+  <Card title="kubectl" icon="terminal">
+    Configured to target your cluster (`kubectl cluster-info`).
+  </Card>
+  <Card title="Persistent storage" icon="hard-drive">
+    A default StorageClass, or configure explicit PVCs for the database and Minio.
+  </Card>
+</CardGroup>
+
+## Chart overview
+
+The chart is located at `charts/v2/airbyte/` in the Airbyte repository. It is an application chart (API version `v2`, chart version `1.1.0`) with no external chart dependencies. All configuration is driven through `values.yaml`.
+
+A second chart, `charts/v2/airbyte-data-plane/`, deploys a standalone data plane for hybrid or multi-region setups.
+
+## Install Airbyte
+
+<Steps>
+  <Step title="Add the Airbyte Helm repository">
+    ```bash
+    helm repo add airbyte https://airbytehq.github.io/helm-charts
+    helm repo update
+    ```
+  </Step>
+
+  <Step title="Install the chart">
+    ```bash
+    helm install airbyte airbyte/airbyte \
+      --namespace airbyte \
+      --create-namespace
+    ```
+
+    <Note>
+      The bootloader Job runs as a pre-install hook and applies database migrations before other pods start.
+    </Note>
+  </Step>
+
+  <Step title="Verify the rollout">
+    ```bash
+    kubectl get pods -n airbyte
+    ```
+
+    All pods except the bootloader (which completes and exits) should reach `Running` status.
+  </Step>
+
+  <Step title="Access the web UI">
+    By default, the webapp Service is `ClusterIP`. Forward a local port to access it:
+
+    ```bash
+    kubectl port-forward svc/airbyte-airbyte-webapp-svc 8000:80 -n airbyte
+    ```
+
+    Then open [http://localhost:8000](http://localhost:8000).
+  </Step>
+</Steps>
+
+## Install with a custom values file
+
+Create a `values-override.yaml` and pass it during install:
+
+```bash
+helm install airbyte airbyte/airbyte \
+  --namespace airbyte \
+  --create-namespace \
+  -f values-override.yaml
+```
+
+## Key global values
+
+All top-level values live under the `global` key. The following sections show the most commonly customized options drawn from `values.yaml`.
+
+### Edition and cluster type
+
+```yaml
+global:
+  # "community" or "enterprise"
+  edition: community
+
+  cluster:
+    # "control-plane" | "data-plane" | "hybrid"
+    type: hybrid
+```
+
+### Image registry and tag
+
+```yaml
+global:
+  image:
+    # Override registry for all Airbyte images
+    registry: ""
+    # Pin all Airbyte images to a specific version
+    tag: ""
+  imagePullSecrets: []
+```
+
+### External URL
+
+Set this to the URL where Airbyte will be reached. It must match your Ingress host.
+
+```yaml
+global:
+  airbyteUrl: "https://airbyte.example.com"
+```
+
+### Database
+
+By default, the chart deploys an internal PostgreSQL instance (`global.database.type: internal`). To use an external database:
+
+```yaml
+global:
+  database:
+    type: external
+    host: "my-postgres.example.com"
+    port: 5432
+    name: "airbyte"
+    user: "airbyte"
+    password: "strong-password"
+    # Or reference a Kubernetes Secret:
+    secretName: "airbyte-config-secrets"
+    # passwordSecretKey: "database-password"
+    # userSecretKey: "database-user"
+```
+
+### Storage
+
+The default storage backend is Minio (`global.storage.type: minio`). Supported types: `minio`, `s3`, `gcs`, `azure`.
+
+<Tabs>
+  <Tab title="Minio (default)">
+    ```yaml
+    global:
+      storage:
+        type: minio
+        minio:
+          accessKeyId: minio
+          secretAccessKey: minio123
+        bucket:
+          log: airbyte-bucket
+          state: airbyte-bucket
+          workloadOutput: airbyte-bucket
+    ```
+  </Tab>
+  <Tab title="S3">
+    ```yaml
+    global:
+      storage:
+        type: s3
+        s3:
+          region: us-east-1
+          authenticationType: credentials
+          accessKeyId: ""
+          secretAccessKey: ""
+        bucket:
+          log: my-airbyte-logs
+          state: my-airbyte-state
+          workloadOutput: my-airbyte-output
+    ```
+  </Tab>
+  <Tab title="GCS">
+    ```yaml
+    global:
+      storage:
+        type: gcs
+        gcs:
+          projectId: my-project
+          credentialsJson: "<base64-encoded-service-account-json>"
+        bucket:
+          log: my-airbyte-logs
+          state: my-airbyte-state
+          workloadOutput: my-airbyte-output
+    ```
+  </Tab>
+  <Tab title="Azure">
+    ```yaml
+    global:
+      storage:
+        type: azure
+        azure:
+          connectionString: "DefaultEndpointsProtocol=https;..."
+        bucket:
+          log: my-airbyte-logs
+          state: my-airbyte-state
+          workloadOutput: my-airbyte-output
+    ```
+  </Tab>
+</Tabs>
+
+### Auth
+
+```yaml
+global:
+  auth:
+    enabled: true
+    instanceAdmin:
+      firstName: "Admin"
+      lastName: "User"
+      # Secret references for credentials
+      emailSecretKey: "instance-admin-email"
+      passwordSecretKey: "instance-admin-password"
+    security:
+      secretName: "airbyte-config-secrets"
+      jwtSignatureSecretKey: "jwt-signature-secret"
+      cookieSecureSetting: true
+      cookieSameSiteSetting: Strict
+```
+
+### Additional environment variables
+
+Inject arbitrary environment variables into all pods:
+
+```yaml
+global:
+  env_vars:
+    MY_CUSTOM_VAR: "value"
+  secrets:
+    MY_SECRET_VAR: "secret-value"
+```
+
+## Ingress
+
+To expose Airbyte externally, enable the ingress and configure hosts:
+
+```yaml
+ingress:
+  enabled: true
+  className: nginx
+  annotations:
+    kubernetes.io/tls-acme: "true"
+  hosts:
+    - host: airbyte.example.com
+      paths:
+        - path: /api
+          pathType: ImplementationSpecific
+          backend: server
+  tls:
+    - secretName: airbyte-tls
+      hosts:
+        - airbyte.example.com
+```
+
+## Resource limits
+
+Each component has its own `resources` block. For example, to set limits on the server:
+
+```yaml
+server:
+  resources:
+    requests:
+      memory: 512Mi
+      cpu: 250m
+    limits:
+      memory: 1Gi
+      cpu: 1
+```
+
+## Feature flags
+
+Airbyte supports configuration-file-based feature flags by default:
+
+```yaml
+global:
+  featureFlags:
+    client: configfile
+    configfile: {}
+  # Or use LaunchDarkly:
+  # featureFlags:
+  #   client: launchdarkly
+  #   launchdarkly:
+  #     key: "sdk-key"
+```
+
+## Secrets manager
+
+To store connector credentials in an external secrets manager:
+
+```yaml
+global:
+  secretsManager:
+    enabled: true
+    type: AWS_SECRET_MANAGER  # VAULT | GOOGLE_SECRET_MANAGER | AWS_SECRET_MANAGER | AZURE_KEY_VAULT
+    # awsSecretManager:
+    #   region: us-east-1
+    #   authenticationType: credentials
+```
+
+## Upgrading
+
+```bash
+helm repo update
+helm upgrade airbyte airbyte/airbyte \
+  --namespace airbyte \
+  -f values-override.yaml
+```
+
+The bootloader runs database migrations as a pre-upgrade hook.
+
+## Deploying a data plane
+
+For hybrid deployments, the `airbyte-data-plane` chart deploys a standalone data plane that connects to a remote control plane:
+
+```bash
+helm install airbyte-data-plane airbyte/airbyte-data-plane \
+  --namespace airbyte-data-plane \
+  --create-namespace \
+  --set global.cluster.type=data-plane \
+  --set global.cluster.dataPlane.controlPlaneAuthEndpoint="https://api.airbyte.com"
+```

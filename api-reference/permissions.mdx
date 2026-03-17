@@ -1,0 +1,188 @@
+---
+title: "Permissions"
+description: "List, create, update, and delete user permissions at workspace and organization scope."
+---
+
+Permissions control what actions a user can perform within a workspace or organization. Each permission grants a role to a specific user.
+
+## Permission types
+
+Permissions are scoped either to a workspace or to an organization.
+
+**Organization-scoped roles:**
+
+| Permission type | Access level |
+|---|---|
+| `organization_admin` | Full organization control |
+| `organization_editor` | Edit organization resources |
+| `organization_runner` | Trigger syncs in the organization |
+| `organization_reader` | Read-only access to organization resources |
+| `organization_member` | Basic organization membership |
+
+**Workspace-scoped roles:**
+
+| Permission type | Access level |
+|---|---|
+| `workspace_admin` | Full workspace control |
+| `workspace_editor` | Edit workspace resources |
+| `workspace_runner` | Trigger syncs in the workspace |
+| `workspace_reader` | Read-only access to workspace resources |
+
+<Note>
+  `workspace_owner` and `instance_admin` are internal permission types not exposed through the public API for creation.
+</Note>
+
+## Endpoints
+
+| Method | Path | Description |
+|---|---|---|
+| `GET` | `/permissions` | List permissions by user ID |
+| `POST` | `/permissions` | Create a permission |
+| `GET` | `/permissions/{permissionId}` | Get permission details |
+| `PATCH` | `/permissions/{permissionId}` | Update a permission |
+| `DELETE` | `/permissions/{permissionId}` | Delete a permission |
+
+## List permissions
+
+**`GET /permissions`**
+
+<ParamField query="userId" type="string">
+  Filter by user UUID.
+</ParamField>
+
+<ParamField query="organizationId" type="string">
+  Required if listing permissions for a user other than yourself. Requires organization admin or higher.
+</ParamField>
+
+```bash
+curl --request GET \
+  --url 'https://api.airbyte.com/v1/permissions?userId=7d08fd6c-531e-4a00-937e-3d355f253e63' \
+  --header 'Authorization: Bearer <token>'
+```
+
+### Response
+
+<ResponseField name="data" type="object[]" required>
+  Array of permission objects.
+  <Expandable title="permission object">
+    <ResponseField name="permissionId" type="string" required>
+      UUID of the permission.
+    </ResponseField>
+    <ResponseField name="permissionType" type="string" required>
+      The permission role type.
+    </ResponseField>
+    <ResponseField name="userId" type="string" required>
+      UUID of the user this permission is granted to.
+    </ResponseField>
+    <ResponseField name="scopeId" type="string" required>
+      UUID of the workspace or organization this permission applies to.
+    </ResponseField>
+    <ResponseField name="scope" type="string" required>
+      Scope of the permission: `workspace`, `organization`, or `none`.
+    </ResponseField>
+  </Expandable>
+</ResponseField>
+
+## Create a permission
+
+**`POST /permissions`**
+
+<ParamField body="permissionType" type="string" required>
+  The role to grant. One of the organization or workspace permission types listed above.
+</ParamField>
+
+<ParamField body="userId" type="string" required>
+  UUID of the user to grant the permission to.
+</ParamField>
+
+<ParamField body="workspaceId" type="string">
+  UUID of the workspace. Required for workspace-scoped permissions.
+</ParamField>
+
+<ParamField body="organizationId" type="string">
+  UUID of the organization. Required for organization-scoped permissions.
+</ParamField>
+
+```bash
+curl --request POST \
+  --url https://api.airbyte.com/v1/permissions \
+  --header 'Authorization: Bearer <token>' \
+  --header 'Content-Type: application/json' \
+  --data '{
+    "permissionType": "workspace_admin",
+    "userId": "7d08fd6c-531e-4a00-937e-3d355f253e63",
+    "workspaceId": "9924bcd0-99be-453d-ba47-c2c9766f7da5"
+  }'
+```
+
+### Response
+
+<ResponseField name="permissionId" type="string" required>
+  UUID of the created permission.
+</ResponseField>
+
+<ResponseField name="permissionType" type="string" required>
+  The granted role type.
+</ResponseField>
+
+<ResponseField name="userId" type="string" required>
+  UUID of the user.
+</ResponseField>
+
+<ResponseField name="workspaceId" type="string">
+  UUID of the workspace, if workspace-scoped.
+</ResponseField>
+
+<ResponseField name="organizationId" type="string">
+  UUID of the organization, if organization-scoped.
+</ResponseField>
+
+## Get a permission
+
+**`GET /permissions/{permissionId}`**
+
+<ParamField path="permissionId" type="string" required>
+  UUID of the permission.
+</ParamField>
+
+```bash
+curl --request GET \
+  --url https://api.airbyte.com/v1/permissions/9924bcd0-99be-453d-ba47-c2c9766f7da5 \
+  --header 'Authorization: Bearer <token>'
+```
+
+## Update a permission
+
+**`PATCH /permissions/{permissionId}`**
+
+<ParamField path="permissionId" type="string" required>
+  UUID of the permission.
+</ParamField>
+
+<ParamField body="permissionType" type="string" required>
+  The new permission role type to assign.
+</ParamField>
+
+```bash
+curl --request PATCH \
+  --url https://api.airbyte.com/v1/permissions/9924bcd0-99be-453d-ba47-c2c9766f7da5 \
+  --header 'Authorization: Bearer <token>' \
+  --header 'Content-Type: application/json' \
+  --data '{"permissionType": "workspace_reader"}'
+```
+
+## Delete a permission
+
+**`DELETE /permissions/{permissionId}`**
+
+<ParamField path="permissionId" type="string" required>
+  UUID of the permission to delete.
+</ParamField>
+
+Returns `204 No Content` on success.
+
+```bash
+curl --request DELETE \
+  --url https://api.airbyte.com/v1/permissions/9924bcd0-99be-453d-ba47-c2c9766f7da5 \
+  --header 'Authorization: Bearer <token>'
+```

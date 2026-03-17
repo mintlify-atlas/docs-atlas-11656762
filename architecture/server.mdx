@@ -1,0 +1,105 @@
+---
+title: "Server"
+description: "How the airbyte-server module implements the Configuration API using handlers and services."
+---
+
+The `airbyte-server` module is the main application that runs the Airbyte Configuration API. It is built on [Micronaut](https://micronaut.io/) and exposes both the internal Configuration API and the public Airbyte API.
+
+## Entry point
+
+The application is started from `Application.kt`:
+
+```kotlin
+// airbyte-server/src/main/kotlin/io/airbyte/server/Application.kt
+fun main(args: Array<String>) {
+  Micronaut
+    .build(*args)
+    .deduceCloudEnvironment(false)
+    .deduceEnvironment(false)
+    .start()
+}
+```
+
+## API interface
+
+The external API interface is declared in the `airbyte-api` module. The OpenAPI specification is located at `airbyte-api/server-api/src/main/openapi/api.yaml` and describes the full surface of endpoints — from connection management to workspace configuration to job status.
+
+The API is served at `https://api.airbyte.com/v1` and supports Cloud, OSS, and Enterprise deployments.
+
+## Handler pattern
+
+The class that implements the API interface is `ConfigurationApi`. Because the API has many endpoints, this class is intentionally thin: it generates a method per endpoint and immediately delegates each call to a resource-specific **handler**.
+
+```
+ConfigurationApi
+├── workspaces/get  ──► WorkspaceHandler
+├── sources/create  ──► SourceHandler
+├── connections/list ──► ConnectionsHandler
+└── ...
+```
+
+This separation means:
+- `ConfigurationApi` stays manageable regardless of how many endpoints exist.
+- Each handler owns all logic for its resource type.
+- Unit tests are written at the **handler level**, not against `ConfigurationApi` directly.
+
+## Package structure
+
+```
+io.airbyte.server
+├── apis/
+│   └── publicapi/
+│       ├── services/      # Public API service layer (SourceService, DestinationService, ...)
+│       ├── mappers/       # API response mappers (SourceReadMapper, ConnectionReadMapper, ...)
+│       └── helpers/       # Shared utilities (AirbyteCatalogHelper, ConnectionHelper, ...)
+├── handlers/              # Resource handlers (WorkspaceHandler, UserInvitationHandler, ...)
+│   └── apidomainmapping/  # Mappers between API models and domain models
+├── services/              # Internal services (StreamStatsService, JobInputService, ...)
+├── repositories/          # Data access layer (StreamStatusesRepository, CommandsRepository, ...)
+│   └── domain/            # Domain model classes (StreamStatus, RetryState, Command, ...)
+├── helpers/               # Server-level utilities (WorkloadIdGenerator, CatalogDiffConverter, ...)
+├── config/                # Micronaut bean factories (DatabaseBeanFactory, TemporalBeanFactory, ...)
+└── auth/                  # Authentication (ScopedTokenSecurityRule, TokenScopeClaim)
+```
+
+## Key classes
+
+| Class | Package | Purpose |
+|-------|---------|----------|
+| `ConfigurationApi` | `apis` | Root API implementation; delegates to handlers |
+| `WorkspaceHandler` | `handlers` | All workspace CRUD logic |
+| `UserInvitationHandler` | `handlers` | User invitation lifecycle |
+| `StreamStatusesHandler` | `handlers` | Stream-level sync status tracking |
+| `StreamStatsService` | `services` | Aggregated stream statistics |
+| `JobInputService` | `services` | Builds input payloads for sync jobs |
+| `DataplaneService` | `services` | Dataplane routing and registration |
+| `StreamStatusesRepository` | `repositories` | Reads/writes stream status records |
+| `CommandsRepository` | `repositories` | Reads/writes command records |
+| `TemporalBeanFactory` | `config` | Configures Temporal client beans |
+| `DatabaseBeanFactory` | `config` | Configures database beans |
+
+## Public API services
+
+The `apis/publicapi/services` package contains a service class for each top-level resource exposed by the public API:
+
+- `SourceService` — source CRUD and schema discovery
+- `DestinationService` — destination CRUD
+- `ConnectionService` — connection lifecycle management
+- `JobService` — job status and log retrieval
+- `WorkspaceService` — workspace management
+- `OrganizationService` — organization management
+- `ConnectorDefinitionsService` — available connector versions
+
+Each service maps public API request models to internal domain types using the mapper classes in `apis/publicapi/mappers`.
+
+## Authentication
+
+The server supports multiple authentication modes:
+
+- **Community auth** — username/password via `CommunityAuthProvider` with JWT refresh tokens persisted by `CommunityAuthRefreshTokenPersistence`
+- **Scoped tokens** — fine-grained token permissions enforced by `ScopedTokenSecurityRule`
+- **Keycloak / SSO** — available in Enterprise editions
+
+<Note>
+  Unit tests for the server are written against individual handlers (e.g., `WorkspaceHandler`), not against `ConfigurationApi`. This keeps test scope focused and avoids testing the delegation layer.
+</Note>

@@ -1,0 +1,260 @@
+---
+title: "Sources"
+description: "List, create, update, and delete data sources, and initiate OAuth flows for OAuth-enabled connectors."
+---
+
+A source is a configured connector that reads data from an external system. Each source belongs to a workspace and has a connector-specific `configuration` object.
+
+## Endpoints
+
+| Method | Path | Description |
+|---|---|---|
+| `GET` | `/sources` | List sources |
+| `POST` | `/sources` | Create a source |
+| `GET` | `/sources/{sourceId}` | Get source details |
+| `PATCH` | `/sources/{sourceId}` | Partially update a source |
+| `PUT` | `/sources/{sourceId}` | Fully replace a source |
+| `DELETE` | `/sources/{sourceId}` | Delete a source |
+| `POST` | `/sources/initiateOAuth` | Initiate OAuth for a source |
+
+## List sources
+
+**`GET /sources`**
+
+<ParamField query="workspaceIds" type="string[]">
+  Filter by workspace UUIDs. Empty list returns all allowed workspaces.
+</ParamField>
+
+<ParamField query="includeDeleted" type="boolean" default="false">
+  Include soft-deleted sources.
+</ParamField>
+
+<ParamField query="limit" type="integer" default="20">
+  Maximum results to return. Range: 1–100.
+</ParamField>
+
+<ParamField query="offset" type="integer" default="0">
+  Offset for pagination.
+</ParamField>
+
+```bash
+curl --request GET \
+  --url 'https://api.airbyte.com/v1/sources?workspaceIds=744cc0ed-7f05-4949-9e60-2a814f90c035' \
+  --header 'Authorization: Bearer <token>'
+```
+
+## Create a source
+
+**`POST /sources`**
+
+Creates a source given a name, workspace ID, and a configuration blob matching the connector specification.
+
+<ParamField body="name" type="string" required>
+  Name of the source, e.g. `dev-mysql-instance`.
+</ParamField>
+
+<ParamField body="workspaceId" type="string" required>
+  UUID of the workspace to create the source in.
+</ParamField>
+
+<ParamField body="configuration" type="object" required>
+  Connector-specific configuration. Must include `airbyte_source_name` identifying the connector type. The full schema is connector-dependent.
+</ParamField>
+
+<ParamField body="definitionId" type="string">
+  UUID of the connector definition. One of `configuration.sourceType` or `definitionId` must be provided.
+</ParamField>
+
+<ParamField body="secretId" type="string">
+  Optional secret ID obtained through the OAuth redirect flow.
+</ParamField>
+
+<ParamField body="resourceAllocation" type="object">
+  Resource requirements for the source's sync workers.
+  <Expandable title="properties">
+    <ParamField body="default" type="object">
+      Default resource requirements applied to all job types.
+    </ParamField>
+    <ParamField body="jobSpecific" type="object[]">
+      Per-job-type resource overrides.
+    </ParamField>
+  </Expandable>
+</ParamField>
+
+<CodeGroup>
+
+```bash cURL
+curl --request POST \
+  --url https://api.airbyte.com/v1/sources \
+  --header 'Authorization: Bearer <token>' \
+  --header 'Content-Type: application/json' \
+  --data '{
+    "name": "My Google Ads Source",
+    "workspaceId": "744cc0ed-7f05-4949-9e60-2a814f90c035",
+    "configuration": {
+      "airbyte_source_name": "google-ads",
+      "customer_id": "1234567890",
+      "start_date": "2023-01-01"
+    }
+  }'
+```
+
+</CodeGroup>
+
+### Response
+
+<ResponseField name="sourceId" type="string" required>
+  UUID of the created source.
+</ResponseField>
+
+<ResponseField name="name" type="string" required>
+  Name of the source.
+</ResponseField>
+
+<ResponseField name="sourceType" type="string" required>
+  Type identifier for the connector, e.g. `postgres`.
+</ResponseField>
+
+<ResponseField name="workspaceId" type="string" required>
+  UUID of the containing workspace.
+</ResponseField>
+
+<ResponseField name="definitionId" type="string" required>
+  UUID of the connector definition.
+</ResponseField>
+
+<ResponseField name="configuration" type="object" required>
+  Connector-specific configuration values. Secret fields are masked as `***`.
+</ResponseField>
+
+<ResponseField name="createdAt" type="integer" required>
+  Unix timestamp (ms) when the source was created.
+</ResponseField>
+
+<ResponseField name="resourceAllocation" type="object">
+  Resource requirements for sync workers.
+</ResponseField>
+
+## Get a source
+
+**`GET /sources/{sourceId}`**
+
+<ParamField path="sourceId" type="string" required>
+  UUID of the source.
+</ParamField>
+
+<ParamField query="includeSecretCoordinates" type="boolean">
+  If `true`, return secret coordinate references instead of `***` for sensitive fields.
+</ParamField>
+
+```bash
+curl --request GET \
+  --url https://api.airbyte.com/v1/sources/18dccc91-0ab1-4f72-9ed7-0b8fc27c5826 \
+  --header 'Authorization: Bearer <token>'
+```
+
+## Update a source (partial)
+
+**`PATCH /sources/{sourceId}`**
+
+Updates only the fields provided in the request body.
+
+<ParamField path="sourceId" type="string" required>
+  UUID of the source.
+</ParamField>
+
+<ParamField body="name" type="string">
+  New name for the source.
+</ParamField>
+
+<ParamField body="configuration" type="object">
+  Updated connector configuration.
+</ParamField>
+
+<ParamField body="workspaceId" type="string">
+  UUID of the workspace.
+</ParamField>
+
+<ParamField body="secretId" type="string">
+  Optional secret ID from an OAuth flow.
+</ParamField>
+
+```bash
+curl --request PATCH \
+  --url https://api.airbyte.com/v1/sources/18dccc91-0ab1-4f72-9ed7-0b8fc27c5826 \
+  --header 'Authorization: Bearer <token>' \
+  --header 'Content-Type: application/json' \
+  --data '{"name": "Updated Source Name"}'
+```
+
+## Replace a source
+
+**`PUT /sources/{sourceId}`**
+
+Fully replaces the source configuration. All fields are overwritten.
+
+<ParamField path="sourceId" type="string" required>
+  UUID of the source.
+</ParamField>
+
+<ParamField body="name" type="string" required>
+  Name for the source.
+</ParamField>
+
+<ParamField body="configuration" type="object" required>
+  Complete connector configuration.
+</ParamField>
+
+## Delete a source
+
+**`DELETE /sources/{sourceId}`**
+
+<ParamField path="sourceId" type="string" required>
+  UUID of the source to delete.
+</ParamField>
+
+Returns `204 No Content` on success.
+
+```bash
+curl --request DELETE \
+  --url https://api.airbyte.com/v1/sources/18dccc91-0ab1-4f72-9ed7-0b8fc27c5826 \
+  --header 'Authorization: Bearer <token>'
+```
+
+## Initiate OAuth
+
+**`POST /sources/initiateOAuth`**
+
+Given a source definition ID, workspace ID, and redirect URL, returns a fully formed URL for performing user authentication against the source's identity provider. After the user authenticates, the IdP redirects to an Airbyte callback that saves the tokens as a secret, returning a `secretId` in the redirect URL query string. Use that `secretId` when creating the source.
+
+<ParamField body="sourceDefinitionId" type="string" required>
+  UUID of the source definition to initiate OAuth for.
+</ParamField>
+
+<ParamField body="workspaceId" type="string" required>
+  UUID of the workspace.
+</ParamField>
+
+<ParamField body="redirectUrl" type="string" required>
+  URL to redirect to after successful authentication.
+</ParamField>
+
+<ParamField body="oAuthInputConfiguration" type="object">
+  OAuth input configuration as required by the connector specification.
+</ParamField>
+
+```bash
+curl --request POST \
+  --url https://api.airbyte.com/v1/sources/initiateOAuth \
+  --header 'Authorization: Bearer <token>' \
+  --header 'Content-Type: application/json' \
+  --data '{
+    "sourceDefinitionId": "aeab5c7d-9b38-4e55-8a69-5c6f66d0c2f9",
+    "workspaceId": "744cc0ed-7f05-4949-9e60-2a814f90c035",
+    "redirectUrl": "https://yourapp.com/oauth/callback"
+  }'
+```
+
+### Response
+
+Returns a JSON object with a `redirectUrl` field containing the OAuth URL to redirect the user to.

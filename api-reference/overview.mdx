@@ -1,0 +1,100 @@
+---
+title: "API overview"
+description: "Programmatically control Airbyte Cloud, OSS, and Enterprise using the Airbyte API."
+---
+
+## Base URL
+
+All API requests target the following base URL:
+
+```
+https://api.airbyte.com/v1
+```
+
+The current stable version is **v1**.
+
+## Authentication
+
+All API requests require a Bearer token in the `Authorization` header. See the [Authentication](/api-reference/authentication) page for details on obtaining a token.
+
+```bash
+Authorization: Bearer <access_token>
+```
+
+## Pagination
+
+List endpoints support cursor-based pagination using `limit` and `offset` query parameters.
+
+<ParamField query="limit" type="integer" default="20">
+  Maximum number of results to return. Minimum: 1, maximum: 100.
+</ParamField>
+
+<ParamField query="offset" type="integer" default="0">
+  Number of results to skip before returning results.
+</ParamField>
+
+Paginated responses include `next` and `previous` cursor URLs:
+
+```json
+{
+  "next": "https://api.airbyte.com/v1/sources?limit=20&offset=20",
+  "previous": "https://api.airbyte.com/v1/sources?limit=20&offset=0",
+  "data": [...]
+}
+```
+
+## Error format
+
+The API returns standard HTTP status codes. Error responses follow the [RFC 7807 Problem Details](https://datatracker.ietf.org/doc/html/rfc7807) format:
+
+```json
+{
+  "type": "https://reference.airbyte.com/reference/errors#bad-request",
+  "title": "Bad Request",
+  "status": 400,
+  "detail": "The request body is missing required field: name"
+}
+```
+
+| Status code | Meaning |
+|---|---|
+| `200` | Success |
+| `204` | Success, no content returned |
+| `400` | Invalid request data |
+| `403` | Not allowed — check your token and permissions |
+| `404` | Resource not found |
+| `422` | Data issue — semantically invalid request |
+
+## Health check
+
+Verify API availability with the health endpoint. No authentication is required.
+
+```bash
+GET https://api.airbyte.com/v1/health
+```
+
+```bash
+curl https://api.airbyte.com/v1/health
+```
+
+A `200` response indicates the API is healthy.
+
+## Available resources
+
+| Resource | Description |
+|---|---|
+| [Applications](/api-reference/applications) | Manage API applications and generate access tokens |
+| [Workspaces](/api-reference/workspaces) | Manage workspaces and OAuth credentials |
+| [Sources](/api-reference/sources) | Configure and manage data sources |
+| [Destinations](/api-reference/destinations) | Configure and manage data destinations |
+| [Connections](/api-reference/connections) | Manage sync connections between sources and destinations |
+| [Jobs](/api-reference/jobs) | Trigger and monitor sync, reset, refresh, and clear jobs |
+| [Organizations](/api-reference/organizations) | List organizations and manage organization OAuth credentials |
+| [Users](/api-reference/users) | List users within an organization |
+| [Permissions](/api-reference/permissions) | Manage user permissions at workspace and organization scope |
+| [Connector definitions](/api-reference/connector-definitions) | List and manage connector definitions |
+| [Dataplanes](/api-reference/dataplanes) | Manage dataplanes and regions |
+
+## SDK
+
+Airbyte provides a Speakeasy-generated SDK. Each endpoint includes an `x-speakeasy-alias` and `x-speakeasy-group` that correspond to SDK method and namespace names. For example, `x-speakeasy-alias: listSources` in the `Sources` group maps to `sdk.sources.listSources()`.

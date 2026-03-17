@@ -1,0 +1,114 @@
+---
+title: "Authentication"
+description: "Authenticate with the Airbyte API using Bearer tokens obtained from an application."
+---
+
+The Airbyte API uses **OAuth 2.0 client credentials** for authentication. You first create an application, then exchange its credentials for an access token.
+
+## Overview
+
+<Steps>
+  <Step title="Create an application">
+    Create an application in your Airbyte account to receive a `clientId` and `clientSecret`.
+  </Step>
+  <Step title="Get an access token">
+    Exchange the `clientId` and `clientSecret` for a short-lived Bearer token via `POST /applications/token`.
+  </Step>
+  <Step title="Authenticate requests">
+    Include the token in the `Authorization` header of every API request.
+  </Step>
+</Steps>
+
+## Getting an access token
+
+**`POST /applications/token`**
+
+This endpoint does not require authentication. It accepts both `application/json` and `application/x-www-form-urlencoded` content types.
+
+### Request parameters
+
+<ParamField body="client_id" type="string" required>
+  The client ID of your application, obtained when the application was created.
+</ParamField>
+
+<ParamField body="client_secret" type="string" required>
+  The client secret of your application.
+</ParamField>
+
+<ParamField body="grant_type" type="string" required>
+  Must be `client_credentials`.
+</ParamField>
+
+### Response fields
+
+<ResponseField name="access_token" type="string" required>
+  The Bearer token to include in subsequent API requests.
+</ResponseField>
+
+<ResponseField name="token_type" type="string" required>
+  Always `Bearer`.
+</ResponseField>
+
+<ResponseField name="expires_in" type="integer" required>
+  Token lifetime in seconds.
+</ResponseField>
+
+### Example
+
+<CodeGroup>
+
+```bash cURL
+curl --request POST \
+  --url https://api.airbyte.com/v1/applications/token \
+  --header 'Content-Type: application/json' \
+  --data '{
+    "client_id": "0da998a2-0d7b-49c7-bb6e-9f7eb9cc68a0",
+    "client_secret": "YOUR_CLIENT_SECRET",
+    "grant_type": "client_credentials"
+  }'
+```
+
+```bash cURL (form-encoded)
+curl --request POST \
+  --url https://api.airbyte.com/v1/applications/token \
+  --header 'Content-Type: application/x-www-form-urlencoded' \
+  --data-urlencode 'client_id=0da998a2-0d7b-49c7-bb6e-9f7eb9cc68a0' \
+  --data-urlencode 'client_secret=YOUR_CLIENT_SECRET' \
+  --data-urlencode 'grant_type=client_credentials'
+```
+
+</CodeGroup>
+
+```json
+{
+  "access_token": "eyJhbGci...",
+  "token_type": "Bearer",
+  "expires_in": 3600
+}
+```
+
+## Using the token
+
+Include the token in the `Authorization` header on every authenticated request:
+
+```bash
+curl --request GET \
+  --url https://api.airbyte.com/v1/workspaces \
+  --header 'Authorization: Bearer eyJhbGci...'
+```
+
+<Warning>
+  Tokens expire. When a request returns `403`, obtain a new token by calling `POST /applications/token` again.
+</Warning>
+
+## Creating an application
+
+Before you can get a token, you need an application. Applications are managed through the Airbyte UI or via the [Applications API](/api-reference/applications).
+
+When created, an application provides:
+- **clientId** — used as the `client_id` when requesting a token
+- **clientSecret** — used as the `client_secret` when requesting a token
+
+<Note>
+  Store the `clientSecret` securely. It is returned only at creation time.
+</Note>

@@ -1,0 +1,133 @@
+---
+title: "Connections overview"
+description: "A connection links a source to a destination and defines how data flows between them, including sync frequency, stream selection, and field mapping."
+---
+
+A connection ties a configured source to a configured destination. When you run a sync, Airbyte reads records from the source and writes them to the destination according to the connection's settings.
+
+## Connection lifecycle
+
+<Steps>
+  <Step title="Create">
+    Provide a `sourceId` and `destinationId`. Airbyte discovers the source schema and presents the available streams.
+  </Step>
+  <Step title="Configure">
+    Choose which streams to sync, select sync modes for each stream, set a schedule, and configure namespace and prefix settings.
+  </Step>
+  <Step title="Activate">
+    Set the connection status to `active`. The first sync runs immediately or waits for the next scheduled window.
+  </Step>
+  <Step title="Sync">
+    Airbyte runs sync jobs according to the schedule or on demand. Each job produces a detailed log and status.
+  </Step>
+</Steps>
+
+## Connection settings
+
+| Field | Description |
+|---|---|
+| `name` | Human-readable label for the connection. |
+| `status` | `active`, `inactive`, `deprecated`, or `locked`. |
+| `schedule` | `manual`, `cron`, or `basic` (UI-managed interval). |
+| `namespaceDefinition` | Where to write data: `source`, `destination`, or `custom_format`. |
+| `namespaceFormat` | Template string used when `namespaceDefinition` is `custom_format`. Use `${SOURCE_NAMESPACE}` to mirror the source namespace. |
+| `prefix` | String prepended to every stream name in the destination. For example, `airbyte_` turns `projects` into `airbyte_projects`. |
+| `nonBreakingSchemaUpdatesBehavior` | How to react when the source schema changes non-destructively: `ignore`, `disable_connection`, `propagate_columns`, or `propagate_fully`. |
+| `configurations` | Per-stream sync mode, cursor field, primary key, and selected fields. |
+| `tags` | Labels for grouping connections in a workspace. |
+
+## Connection status
+
+| Status | Meaning |
+|---|---|
+| `active` | The connection is enabled and syncs will run on schedule. |
+| `inactive` | The connection is paused. No scheduled syncs will run, but you can trigger a manual sync. |
+| `deprecated` | The connection has been soft-deleted. It appears in history but cannot be activated. |
+| `locked` | The connection is managed externally (for example, by a connection template) and cannot be edited directly. |
+
+## Create a connection
+
+<Tabs>
+  <Tab title="API">
+    ```bash
+    curl -X POST https://api.airbyte.com/v1/connections \
+      -H "Authorization: Bearer <token>" \
+      -H "Content-Type: application/json" \
+      -d '{
+        "sourceId": "95e66a59-8045-4307-9678-63bc3c9b8c93",
+        "destinationId": "e478de0d-a3a0-475c-b019-25f7dd29e281",
+        "name": "Postgres-to-Bigquery"
+      }'
+    ```
+
+    A successful response returns the new connection:
+
+    ```json
+    {
+      "connectionId": "9924bcd0-99be-453d-ba47-c2c9766f7da5"
+    }
+    ```
+  </Tab>
+  <Tab title="UI">
+    1. In the sidebar, click **Connections**.
+    2. Click **New connection**.
+    3. Select a source and a destination.
+    4. Choose the streams to sync and configure sync modes.
+    5. Set a schedule, then click **Set up connection**.
+  </Tab>
+</Tabs>
+
+## Update a connection
+
+Use `PATCH /connections/{connectionId}` to update any field without replacing the entire resource:
+
+```bash
+curl -X PATCH https://api.airbyte.com/v1/connections/9924bcd0-99be-453d-ba47-c2c9766f7da5 \
+  -H "Authorization: Bearer <token>" \
+  -H "Content-Type: application/json" \
+  -d '{
+    "name": "Postgres-to-Bigquery-v2",
+    "status": "inactive"
+  }'
+```
+
+## List connections
+
+List connections across one or more workspaces:
+
+```bash
+curl "https://api.airbyte.com/v1/connections?workspaceIds=18dccc91-0ab1-4f72-9ed7-0b8fc27c5826&limit=20&offset=0" \
+  -H "Authorization: Bearer <token>"
+```
+
+The response is paginated. Use the `next` and `previous` cursor URLs to page through results.
+
+## Delete a connection
+
+```bash
+curl -X DELETE https://api.airbyte.com/v1/connections/9924bcd0-99be-453d-ba47-c2c9766f7da5 \
+  -H "Authorization: Bearer <token>"
+```
+
+A `204 No Content` response confirms the deletion.
+
+<Warning>
+  Deleting a connection removes it permanently, including all sync history. Consider setting `status` to `inactive` if you want to preserve history.
+</Warning>
+
+## Next steps
+
+<CardGroup cols={2}>
+  <Card title="Sync modes" icon="arrows-rotate" href="/guides/connections/sync-modes">
+    Choose how Airbyte reads from the source and writes to the destination.
+  </Card>
+  <Card title="Scheduling" icon="calendar" href="/guides/connections/scheduling">
+    Configure automatic and manual sync triggers.
+  </Card>
+  <Card title="Field selection" icon="filter" href="/guides/connections/field-selection">
+    Limit which streams and fields are synced.
+  </Card>
+  <Card title="Notifications" icon="bell" href="/guides/operations/notifications">
+    Get notified when syncs succeed or fail.
+  </Card>
+</CardGroup>

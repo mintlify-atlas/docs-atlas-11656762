@@ -1,0 +1,132 @@
+---
+title: "OAuth for connectors"
+description: "Configure OAuth so users can authenticate Airbyte connectors with services like Google, Salesforce, and Slack without sharing passwords."
+---
+
+OAuth in Airbyte is used to authenticate **connector credentials** — for example, authorizing Airbyte to read from your Google Analytics account or write to Salesforce. This is separate from how users log in to the Airbyte platform itself.
+
+## How OAuth flows work
+
+<Steps>
+  <Step title="Initiate the OAuth flow">
+    Call `POST /sources/initiateOAuth` (or the equivalent for destinations). Airbyte constructs an authorization URL for the provider and returns a `redirectUrl`.
+  </Step>
+  <Step title="User authorizes">
+    Redirect the user to the `redirectUrl`. The user logs in to the provider and grants Airbyte the requested permissions.
+  </Step>
+  <Step title="Provider callback">
+    The provider redirects the user back to Airbyte with an authorization code. Airbyte exchanges the code for access and refresh tokens and stores them securely.
+  </Step>
+  <Step title="Create the source">
+    Call `POST /sources` with the optional `secretId` returned from the OAuth callback. Airbyte attaches the stored tokens to the source configuration.
+  </Step>
+</Steps>
+
+## Initiating OAuth
+
+Call the `initiateOAuth` endpoint for the source connector:
+
+```bash
+curl -X POST https://api.airbyte.com/v1/sources/initiateOAuth \
+  -H "Authorization: Bearer <token>" \
+  -H "Content-Type: application/json" \
+  -d '{
+    "workspaceId": "18dccc91-0ab1-4f72-9ed7-0b8fc27c5826",
+    "sourceDefinitionId": "<google-analytics-definition-id>",
+    "redirectUrl": "https://your-app.example.com/oauth/callback",
+    "oAuthInputConfiguration": {}
+  }'
+```
+
+The response contains a `redirectUrl`:
+
+```json
+{
+  "redirectUrl": "https://accounts.google.com/o/oauth2/auth?client_id=..."
+}
+```
+
+Send the user to this URL to complete authorization.
+
+## Supported OAuth providers
+
+Airbyte ships with OAuth flow implementations for a wide range of providers. The following connectors have built-in OAuth support:
+
+<CardGroup cols={3}>
+  <Card title="Google" icon="google">
+    Google Ads, Google Analytics, Google Sheets, Google Drive, Google Cloud Storage, Google Search Console, YouTube Analytics
+  </Card>
+  <Card title="Facebook" icon="facebook">
+    Facebook Marketing, Facebook Pages, Instagram
+  </Card>
+  <Card title="Microsoft" icon="microsoft">
+    Bing Ads, OneDrive, SharePoint, Teams, Azure Blob Storage
+  </Card>
+  <Card title="Salesforce" icon="salesforce">
+    Salesforce (source)
+  </Card>
+  <Card title="Slack" icon="slack">
+    Slack
+  </Card>
+  <Card title="Others">
+    GitHub, GitLab, HubSpot, Intercom, LinkedIn Ads, Mailchimp, Notion, Pipedrive, Pinterest, QuickBooks, Shopify, Snapchat Marketing, Typeform, Xero, Zendesk, and more
+  </Card>
+</CardGroup>
+
+## Organization-level OAuth credentials
+
+You can configure OAuth credentials at the organization level so they are shared across all workspaces. This avoids requiring each workspace to maintain its own OAuth app credentials.
+
+```bash
+curl -X POST https://api.airbyte.com/v1/organizations/<orgId>/oauthCredentials \
+  -H "Authorization: Bearer <token>" \
+  -H "Content-Type: application/json" \
+  -d '{
+    "actorType": "source",
+    "name": "google-ads",
+    "configuration": {
+      "client_id": "<google-client-id>",
+      "client_secret": "<google-client-secret>"
+    }
+  }'
+```
+
+With organization-level credentials configured, workspaces use those credentials when initiating OAuth flows for the matching connector type.
+
+## Declarative OAuth
+
+Connectors built with the low-code CDK can declare their OAuth flow in the connector manifest. The `DeclarativeOAuthFlow` and `DeclarativeOAuthSpecHandler` classes handle:
+
+- Building the authorization URL from the manifest's OAuth spec.
+- Exchanging the authorization code for tokens.
+- Applying PKCE (`CodeChallengeS256Filter`) and Base64 encoding (`Base64EncodeFilter`) filters to the OAuth parameters.
+
+## OAuth credential storage and security
+
+- OAuth tokens are stored in Airbyte's configured secrets backend (AWS Secrets Manager, Google Secret Manager, Vault, or the internal database).
+- Tokens are never returned in plaintext API responses after initial creation.
+- Refresh tokens are used automatically to obtain new access tokens before they expire.
+- You can revoke OAuth tokens from the connector configuration page in the UI.
+
+<Warning>
+  Store your `clientId` and `clientSecret` for OAuth apps in a secrets manager, not in plaintext configuration files.
+</Warning>
+
+## Creating a source with a secretId
+
+After the user completes the OAuth flow, the callback returns a `secretId`. Pass it when creating the source to associate the OAuth tokens:
+
+```bash
+curl -X POST https://api.airbyte.com/v1/sources \
+  -H "Authorization: Bearer <token>" \
+  -H "Content-Type: application/json" \
+  -d '{
+    "name": "My Google Ads",
+    "workspaceId": "18dccc91-0ab1-4f72-9ed7-0b8fc27c5826",
+    "configuration": {
+      "sourceType": "google-ads",
+      "customer_id": "123-456-7890"
+    },
+    "secretId": "<secretId-from-oauth-callback>"
+  }'
+```

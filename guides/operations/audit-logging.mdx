@@ -1,0 +1,164 @@
+---
+title: "Audit logging"
+description: "Track who did what and when in your Airbyte deployment using audit logs stored in cloud object storage."
+---
+
+Audit logging records operations performed through the Airbyte API, along with the actor who performed them, the request details, and the outcome. Audit logs support compliance, security review, and incident investigation.
+
+## How audit logging works
+
+Airbyte's `AuditLoggingInterceptor` intercepts annotated API method calls using Micronaut AOP. For each intercepted request it:
+
+1. Captures the actor identity from the request headers.
+2. Extracts the request body summary.
+3. Proceeds with the request.
+4. Captures the response summary and success/failure status.
+5. Writes a structured `AuditLogEntry` to the configured storage backend.
+
+## Enabling audit logging
+
+Audit logging is controlled by two independent mechanisms:
+
+| Mechanism | Description |
+|---|---|
+| `AUDIT_LOGGING_ENABLED` env var | Set to `true` to enable audit logging for self-hosted Enterprise deployments. |
+| `StoreAuditLogs` feature flag | Used in Airbyte Cloud to enable audit logging per workspace without the env var. |
+
+Audit logging proceeds if either the env var is `true` **or** the `StoreAuditLogs` feature flag is enabled for the relevant workspace.
+
+```yaml
+# Kubernetes / Docker Compose environment variable
+AUDIT_LOGGING_ENABLED: "true"
+```
+
+## Storage backend
+
+Audit logs are written to Airbyte's configured cloud object storage bucket using `AirbyteCloudStorageBulkUploader`. The bucket is identified by the `storageConfiguration.bucket.auditLogging` configuration property.
+
+Supported backends:
+
+- **AWS S3**
+- **Google Cloud Storage (GCS)**
+- **Azure Blob Storage**
+- **MinIO** (self-hosted S3-compatible)
+
+If the audit logging bucket is not configured, entries are logged to the console only:
+
+```
+Audit logging storage bucket is not configured! Logging to console only: {...}
+```
+
+## AuditLogEntry schema
+
+Each audit log entry is a JSON object:
+
+| Field | Type | Description |
+|---|---|---|
+| `id` | UUID | Unique identifier for this log entry. |
+| `timestamp` | long | Unix timestamp in milliseconds. |
+| `actor` | Actor | The user who performed the action. |
+| `operation` | string | The API method name (for example, `createConnection`). |
+| `request` | object | Summary of the request body. |
+| `response` | object | Summary of the response body. |
+| `success` | boolean | Whether the operation succeeded. |
+| `errorMessage` | string | Error message if the operation failed. |
+
+### Actor schema
+
+| Field | Type | Description |
+|---|---|---|
+| `actorId` | string | Airbyte user ID. |
+| `email` | string | User email address. |
+| `ipAddress` | string | Client IP address from the request. |
+| `userAgent` | string | HTTP User-Agent header from the request. |
+
+### Example log entry
+
+```json
+{
+  "id": "550e8400-e29b-41d4-a716-446655440000",
+  "timestamp": 1711328450000,
+  "actor": {
+    "actorId": "user-uuid",
+    "email": "alice@example.com",
+    "ipAddress": "203.0.113.42",
+    "userAgent": "curl/7.88.1"
+  },
+  "operation": "createConnection",
+  "request": {
+    "sourceId": "95e66a59-8045-4307-9678-63bc3c9b8c93",
+    "destinationId": "e478de0d-a3a0-475c-b019-25f7dd29e281",
+    "name": "Postgres-to-Bigquery"
+  },
+  "response": {
+    "connectionId": "9924bcd0-99be-453d-ba47-c2c9766f7da5"
+  },
+  "success": true
+}
+```
+
+## Audited operations
+
+Audit logging covers operations annotated with `@AuditLogging` in the Airbyte codebase. This includes:
+
+- **Connection operations**: create, update, delete connections.
+- **Permission operations**: create, update, delete permissions (with dedicated providers for each).
+- **Source and destination operations**: create, update, delete sources and destinations.
+- **Workspace operations**: create and update workspaces.
+- **User management**: user invitations, status changes.
+
+## Querying audit logs
+
+Audit logs are stored as JSON objects in your cloud storage bucket. Use your cloud provider's query tools to analyze them:
+
+<Tabs>
+  <Tab title="AWS S3 + Athena">
+    ```sql
+    SELECT
+      timestamp,
+      actor.email,
+      actor.ipAddress,
+      operation,
+      success
+    FROM airbyte_audit_logs
+    WHERE success = false
+      AND timestamp > (CURRENT_TIMESTAMP - INTERVAL '7' DAY)
+    ORDER BY timestamp DESC
+    LIMIT 100;
+    ```
+  </Tab>
+  <Tab title="GCS + BigQuery">
+    ```sql
+    SELECT
+      TIMESTAMP_MILLIS(timestamp) AS event_time,
+      JSON_VALUE(actor, '$.email') AS user_email,
+      JSON_VALUE(actor, '$.ipAddress') AS ip_address,
+      operation,
+      success
+    FROM `project.dataset.airbyte_audit_logs`
+    WHERE success = FALSE
+      AND TIMESTAMP_MILLIS(timestamp) > TIMESTAMP_SUB(CURRENT_TIMESTAMP(), INTERVAL 7 DAY)
+    ORDER BY event_time DESC
+    LIMIT 100;
+    ```
+  </Tab>
+</Tabs>
+
+## Retention
+
+Audit log retention is governed by the lifecycle policies of your storage bucket. Configure object lifecycle rules in your cloud provider:
+
+- **AWS S3**: Use S3 Lifecycle rules to expire or transition objects after a set number of days.
+- **GCS**: Use Object Lifecycle Management to delete or archive objects.
+- **Azure Blob Storage**: Use Lifecycle Management policies.
+
+<Note>
+  Audit logs are append-only. Once written, they are not modified or deleted by Airbyte. Retention is entirely under your control via the storage bucket lifecycle policy.
+</Note>
+
+## Compliance considerations
+
+- Audit logs include IP addresses. Review your organization's data retention and privacy policies before setting retention periods.
+- For SOC 2 or ISO 27001 compliance, retain audit logs for at least 12 months.
+- Restrict access to the audit logging bucket to security and compliance personnel.
+- Consider encrypting the bucket using customer-managed keys (CMK) for regulated workloads.

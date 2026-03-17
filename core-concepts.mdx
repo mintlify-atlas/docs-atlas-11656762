@@ -1,0 +1,78 @@
+---
+title: "Core concepts"
+description: "Definitions for the key terms and objects you encounter throughout Airbyte."
+---
+
+## Data flow
+
+Every Airbyte sync follows the same fundamental path:
+
+```
+Source  ──►  Connection  ──►  Destination
+```
+
+A **Source** reads records from an external system. A **Destination** writes those records somewhere else. A **Connection** ties the two together and defines how and when data moves.
+
+---
+
+## Glossary
+
+| Term | Definition |
+|------|------------|
+| **Source** | A configured instance of a source connector. Represents one external system (e.g., a specific Postgres database or GitHub repository) from which Airbyte reads data. |
+| **Destination** | A configured instance of a destination connector. Represents the target system (e.g., Snowflake, BigQuery, S3) where Airbyte writes data. |
+| **Connector** | A Docker image that implements the [Airbyte Protocol](https://docs.airbyte.com/understanding-airbyte/airbyte-protocol/). Connectors can be sources or destinations, and can be written in any language. |
+| **Connection** | A configured link between one source and one destination. Defines which streams to sync, the sync schedule, and the sync mode for each stream. |
+| **Sync** | A single execution of a connection. A sync reads from the source and writes to the destination according to the connection configuration. |
+| **Stream** | A logical grouping of records within a source — analogous to a database table or an API endpoint's resource. Each connection lets you select which streams to include. |
+| **Field selection** | The ability to include or exclude individual fields within a stream, reducing the data volume sent to the destination. |
+| **Workspace** | An isolated environment within Airbyte that contains a set of sources, destinations, and connections. Used to organize resources, typically by team or project. |
+| **Organization** | A higher-level grouping that contains one or more workspaces. Useful for managing access and billing across teams. |
+| **Job** | The internal record of a sync attempt, including its status, logs, and metrics. |
+
+---
+
+## Sync modes
+
+Each stream in a connection has a sync mode that controls how records are replicated.
+
+<Columns cols={2}>
+  <Card title="Full Refresh" icon="arrows-rotate">
+    Airbyte reads all records from the source on every sync and overwrites (or appends to) the destination. Simple and reliable, but can be expensive for large datasets.
+
+    **Sub-modes:** Overwrite, Append
+  </Card>
+  <Card title="Incremental" icon="arrow-trend-up">
+    Airbyte reads only records that have changed or been added since the last sync, using a cursor field (e.g., `updated_at`). Much more efficient for large or frequently-updated datasets.
+
+    **Sub-modes:** Append, Append + Deduped
+  </Card>
+</Columns>
+
+---
+
+## Connectors
+
+Airbyte provides 300+ connectors for popular APIs, databases, data warehouses, and data lakes. Connectors take the form of Docker images and follow the [Airbyte Protocol](https://docs.airbyte.com/understanding-airbyte/airbyte-protocol/), which means they can be implemented in any language.
+
+You can build new connectors using:
+
+- The [low-code CDK](https://docs.airbyte.com/connector-development/config-based/low-code-cdk-overview) — for API connectors, no coding required
+- The [Python CDK](https://docs.airbyte.com/connector-development/cdk-python/) — for more complex connector logic
+
+---
+
+## Workspace vs. organization
+
+```
+Organization
+└── Workspace A
+│   ├── Source: Postgres production
+│   ├── Destination: Snowflake
+│   └── Connection: Postgres → Snowflake
+└── Workspace B
+    ├── Source: Stripe
+    └── ...
+```
+
+Organizations are the top-level billing and access control unit. Workspaces let you isolate configurations within an organization — for example, separating production and development environments, or separating workloads by team.

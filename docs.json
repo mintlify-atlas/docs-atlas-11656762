@@ -1,122 +1,139 @@
 {
   "$schema": "https://mintlify.com/docs.json",
-  "theme": "mint",
-  "name": "Mint Starter Kit",
+  "name": "Airbyte Platform",
+  "theme": "sequoia",
   "colors": {
-    "primary": "#16A34A",
-    "light": "#07C983",
-    "dark": "#15803D"
+    "primary": "#5d59e6",
+    "light": "#aca4e2",
+    "dark": "#0c0c34"
   },
-  "favicon": "/favicon.svg",
+  "favicon": "https://media.brand.dev/3ac11b14-ce92-401f-8506-e0b2dc4c1da6.png",
+  "logo": {
+    "light": "https://media.brand.dev/d31a2c8c-ecd3-4fec-800e-fad03ad76d2a.svg",
+    "dark": "https://media.brand.dev/f660a1ea-6ba1-49cf-a084-b8be128dd015.svg"
+  },
+  "navbar": {
+    "primary": {
+      "type": "github",
+      "href": "https://github.com/airbytehq/airbyte-platform"
+    }
+  },
+  "footer": {
+    "socials": {
+      "github": "https://github.com/airbytehq/airbyte-platform"
+    }
+  },
   "navigation": {
     "tabs": [
       {
-        "tab": "Guides",
+        "tab": "Overview",
         "groups": [
           {
-            "group": "Getting started",
+            "group": "Get Started",
             "pages": [
-              "index",
+              "introduction",
               "quickstart",
-              "development"
+              "core-concepts"
             ]
           },
           {
-            "group": "Customization",
+            "group": "Architecture",
             "pages": [
-              "essentials/settings",
-              "essentials/navigation"
-            ]
-          },
-          {
-            "group": "Writing content",
-            "pages": [
-              "essentials/markdown",
-              "essentials/code",
-              "essentials/images",
-              "essentials/reusable-snippets"
-            ]
-          },
-          {
-            "group": "AI tools",
-            "pages": [
-              "ai-tools/cursor",
-              "ai-tools/claude-code",
-              "ai-tools/windsurf"
+              "architecture/overview",
+              "architecture/server",
+              "architecture/workers",
+              "architecture/temporal",
+              "architecture/bootloader"
             ]
           }
         ]
       },
       {
-        "tab": "API reference",
+        "tab": "Guides",
         "groups": [
           {
-            "group": "API documentation",
+            "group": "Deployment",
             "pages": [
-              "api-reference/introduction"
+              "guides/deployment/docker",
+              "guides/deployment/kubernetes-helm",
+              "guides/deployment/configuration"
             ]
           },
           {
-            "group": "Endpoint examples",
+            "group": "Connectors",
             "pages": [
-              "api-reference/endpoint/get",
-              "api-reference/endpoint/create",
-              "api-reference/endpoint/delete",
-              "api-reference/endpoint/webhook"
+              "guides/connectors/overview",
+              "guides/connectors/sources",
+              "guides/connectors/destinations",
+              "guides/connectors/connector-builder"
+            ]
+          },
+          {
+            "group": "Connections & Syncs",
+            "pages": [
+              "guides/connections/overview",
+              "guides/connections/sync-modes",
+              "guides/connections/scheduling",
+              "guides/connections/field-selection"
+            ]
+          },
+          {
+            "group": "Security & Auth",
+            "pages": [
+              "guides/auth/authentication",
+              "guides/auth/oauth",
+              "guides/auth/feature-flags"
+            ]
+          },
+          {
+            "group": "Operations",
+            "pages": [
+              "guides/operations/monitoring",
+              "guides/operations/metrics",
+              "guides/operations/notifications",
+              "guides/operations/audit-logging"
+            ]
+          }
+        ]
+      },
+      {
+        "tab": "API Reference",
+        "groups": [
+          {
+            "group": "API Overview",
+            "pages": [
+              "api-reference/overview",
+              "api-reference/authentication"
+            ]
+          },
+          {
+            "group": "Core Resources",
+            "pages": [
+              "api-reference/workspaces",
+              "api-reference/sources",
+              "api-reference/destinations",
+              "api-reference/connections",
+              "api-reference/jobs"
+            ]
+          },
+          {
+            "group": "Organization & Users",
+            "pages": [
+              "api-reference/organizations",
+              "api-reference/users",
+              "api-reference/permissions"
+            ]
+          },
+          {
+            "group": "Platform",
+            "pages": [
+              "api-reference/connector-definitions",
+              "api-reference/applications",
+              "api-reference/dataplanes"
             ]
           }
         ]
       }
-    ],
-    "global": {
-      "anchors": [
-        {
-          "anchor": "Documentation",
-          "href": "https://mintlify.com/docs",
-          "icon": "book-open-cover"
-        },
-        {
-          "anchor": "Blog",
-          "href": "https://mintlify.com/blog",
-          "icon": "newspaper"
-        }
-      ]
-    }
-  },
-  "logo": {
-    "light": "/logo/light.svg",
-    "dark": "/logo/dark.svg"
-  },
-  "navbar": {
-    "links": [
-      {
-        "label": "Support",
-        "href": "mailto:hi@mintlify.com"
-      }
-    ],
-    "primary": {
-      "type": "button",
-      "label": "Dashboard",
-      "href": "https://dashboard.mintlify.com"
-    }
-  },
-  "contextual": {
-    "options": [
-     "copy",
-     "view",
-     "chatgpt",
-     "claude",
-     "perplexity",
-     "mcp",
-     "cursor",
-     "vscode"
-   ]
-  },
-  "footer": {
-    "socials": {
-      "x": "https://x.com/mintlify",
-      "github": "https://github.com/mintlify",
-      "linkedin": "https://linkedin.com/company/mintlify"
-    }
+    ]
   }
 }

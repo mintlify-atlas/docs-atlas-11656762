@@ -1,0 +1,96 @@
+---
+title: "Temporal"
+description: "Why Airbyte uses Temporal for job orchestration and how workflow versioning is managed."
+---
+
+Airbyte uses [Temporal](https://temporal.io/) to orchestrate sync jobs. Temporal provides durable, fault-tolerant workflow execution: if a worker crashes mid-sync, Temporal replays the workflow history to resume from where it left off without losing state.
+
+## Why Temporal
+
+Data syncs are long-running, stateful operations. Failures happen — containers crash, networks partition, source APIs throttle. Temporal addresses these challenges by:
+
+- **Persisting workflow history** — every activity execution is recorded, enabling reliable replay after failures.
+- **Built-in retries** — activities can be retried independently without restarting the whole workflow.
+- **Signals and queries** — external systems (like the Airbyte server) can signal a running workflow to cancel, reset, or update a connection without polling.
+- **Durability across deployments** — long-running workflows survive rolling restarts of the workers.
+
+## Versioning strategy
+
+Temporal maintains an internal history of the activities it runs. This history depends on a specific execution order. If workers are restarted with a new workflow implementation that changes that order, in-flight workflows can get stuck and require manual intervention.
+
+Temporal provides a versioning API to manage these transitions. Airbyte follows a strict set of rules on top of that API.
+
+### Rules
+
+- There is **one global version per workflow** — a single `VERSION_LABEL` tag is used per workflow type.
+- The version number must be bumped for **any** of the following changes:
+  - Adding an activity
+  - Deleting an activity
+  - Changing the input of an activity
+  - Adding a Temporal sleep timer
+
+<Warning>
+  Version bumps are not limited to Airbyte release boundaries. Any code change that alters workflow activity order requires a version bump, even within a single release.
+</Warning>
+
+### Using versions in code
+
+**When no prior version exists in the workflow:**
+
+```java
+final int version = Workflow.getVersion(VERSION_LABEL, MINIMAL_VERSION, CURRENT_VERSION);
+
+if (version >= CURRENT_VERSION) {
+    // New implementation
+}
+```
+
+**When a prior version already exists (bumping from 4 to 5):**
+
+```java
+final int version = Workflow.getVersion(VERSION_LABEL, MINIMAL_VERSION, CURRENT_VERSION);
+
+if (version <= 4 && version >= MINIMAL_VERSION) {
+    // Old implementation
+} else if (version >= CURRENT_VERSION) {
+    // New implementation
+}
+```
+
+### MINIMAL_VERSION and CURRENT_VERSION
+
+Every workflow file must declare both constants, even if they are not actively used in branching logic:
+
+| Constant | Purpose |
+|----------|---------|
+| `CURRENT_VERSION` | The version introduced by the most recent change to this workflow. |
+| `MINIMAL_VERSION` | The oldest version still supported. Workflows running below this version are considered broken and need manual intervention. |
+
+<Note>
+  Both `MINIMAL_VERSION` and `CURRENT_VERSION` must remain in the workflow file even after all branching on older versions has been removed. Once used, they must always be present.
+</Note>
+
+### Removing a version
+
+Removing support for an old version (raising `MINIMAL_VERSION`) is a potentially breaking change. Before raising `MINIMAL_VERSION`:
+
+1. Verify that no in-flight workflow executions are running on the version being removed. Temporal's visibility API or the Temporal UI can show the version distribution of active workflows.
+2. Deploy the new code with `MINIMAL_VERSION` raised.
+3. Monitor for stuck workflows and manually terminate or reset any that were on the removed version.
+
+## Workflow types
+
+Airbyte runs several Temporal workflow types:
+
+| Workflow | Implementation | Purpose |
+|----------|---------------|---------|
+| `ConnectionManagerWorkflow` | `ConnectionManagerWorkflowImpl` | Long-running per-connection lifecycle manager |
+| `SyncWorkflowV2` | `SyncWorkflowV2Impl` | Executes a single sync attempt |
+| `ConnectorCommandWorkflow` | `ConnectorCommandWorkflow` | Runs a single connector command (check, discover, replicate) |
+| `DiscoverCatalogAndAutoPropagateWorkflow` | `DiscoverCatalogAndAutoPropagateWorkflowImpl` | Discovers schema and propagates changes |
+| `ActorDefinitionUpdateWorkflow` | `ActorDefinitionUpdateWorkflowImpl` | Handles connector version updates |
+| `JobPostProcessingWorkflow` | — | Post-sync cleanup and notification tasks |
+
+## Task queues
+
+Workers poll specific Temporal task queues based on job type (defined by `TemporalJobType`). The queue for a given job is resolved via `TemporalTaskQueueUtils.getTaskQueue(TemporalJobType.SYNC)`. Separating task queues allows independent scaling of worker pools for different job types.

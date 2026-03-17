@@ -1,0 +1,125 @@
+---
+title: "Workers"
+description: "How airbyte-workers executes sync jobs using Temporal workflows and activities."
+---
+
+The `airbyte-workers` module contains the logic for how jobs are executed. Jobs are orchestrated using [Temporal](https://temporal.io/), a durable workflow engine that ensures reliability even when processes crash or services restart.
+
+## Entry point
+
+```kotlin
+// airbyte-workers/src/main/kotlin/io/airbyte/workers/Application.kt
+fun main(args: Array<String>) {
+  Micronaut
+    .build(*args)
+    .deduceCloudEnvironment(false)
+    .deduceEnvironment(false)
+    .start()
+}
+```
+
+On startup, the application registers Temporal workflow and activity implementations, then begins polling Temporal task queues.
+
+## Package structure
+
+```
+io.airbyte.workers
+├── temporal/
+│   ├── scheduling/           # Connection lifecycle management
+│   │   ├── ConnectionManagerWorkflowImpl.kt
+│   │   └── activities/       # Scheduling activities
+│   ├── sync/                 # Sync execution workflows
+│   │   ├── SyncWorkflowImpl.kt       # Deprecated
+│   │   ├── SyncWorkflowV2Impl.kt
+│   │   └── InvokeOperationsActivityImpl.kt
+│   ├── workflows/            # Connector command workflows
+│   │   ├── ConnectorCommandWorkflow.kt
+│   │   ├── ActorDefinitionUpdateWorkflowImpl.kt
+│   │   └── DiscoverCatalogAndAutoPropagateWorkflowImpl.kt
+│   ├── discover/             # Schema discovery
+│   ├── check/                # Connection check
+│   ├── spec/                 # Connector spec retrieval
+│   └── jobpostprocessing/    # Post-sync tasks
+├── sync/                     # Sync execution utilities
+├── workload/                 # Workload dispatch
+├── context/                  # Workflow context helpers
+├── models/                   # Input/output models
+└── config/                   # Bean configuration
+```
+
+## Workflow architecture
+
+Airbyte uses two layers of Temporal workflows for each sync:
+
+### ConnectionManagerWorkflow
+
+`ConnectionManagerWorkflowImpl` is the long-running workflow that manages the full lifecycle of a connection. It:
+
+- Waits for the next scheduled sync time
+- Creates a job and attempt record
+- Launches a child sync workflow
+- Handles retries, cancellations, and auto-disable logic
+- Records metrics and logs for every attempt
+
+Activities used by `ConnectionManagerWorkflow` include:
+- `ConfigFetchActivity` — loads connection and schedule configuration
+- `JobCreationAndStatusUpdateActivity` — creates jobs, updates attempt status
+- `AutoDisableConnectionActivity` — disables connections after repeated failures
+- `RetryStatePersistenceActivity` — reads and writes retry state
+- `RecordMetricActivity` — emits observability metrics
+
+### SyncWorkflowV2
+
+`SyncWorkflowV2Impl` runs the actual data movement for a single sync attempt. It:
+
+1. Runs a `discover` command to get the latest source schema (as a child `ConnectorCommandWorkflow`)
+2. Post-processes the catalog diff (applies schema propagation)
+3. Checks if the connection is still active
+4. Runs a `replication` command (as a child `ConnectorCommandWorkflow`)
+5. Invokes webhook operations if configured
+
+```kotlin
+// SyncWorkflowV2Impl — simplified run method
+override fun run(input: SyncWorkflowV2Input): StandardSyncOutput {
+  val discoverOutput = runDiscoverCommand(actorId = input.sourceId, ...)
+  val postprocessCatalogOutput = discoverCatalogHelperActivity.postprocess(...)
+
+  val status = configFetchActivity.getStatus(input.connectionId)
+  if (status is INACTIVE || LOCKED) return cancelledOutput()
+
+  val replicationOutput = runReplicationCommand(connectionId = input.connectionId, ...)
+  invokeOperationsActivity.invokeOperationsV2(...)
+  return replicationOutput.replicate
+}
+```
+
+### ConnectorCommandWorkflow
+
+A short-lived child workflow that executes a single connector command (check, discover, or replicate). Each command is dispatched as a workload to a connector Docker container.
+
+## Job lifecycle
+
+<Steps>
+  <Step title="Connection scheduled">
+    `ConnectionManagerWorkflow` wakes up when the scheduled sync time arrives (or when a manual sync is triggered via signal).
+  </Step>
+  <Step title="Job and attempt created">
+    `JobCreationAndStatusUpdateActivity` creates a job record and attempt record in the database.
+  </Step>
+  <Step title="Sync workflow launched">
+    A child `SyncWorkflowV2` is started. It runs discover, applies catalog diffs, then runs replication.
+  </Step>
+  <Step title="Connector containers run">
+    The replication command launches source and destination connector Docker containers (or workload pods in Kubernetes) that exchange data.
+  </Step>
+  <Step title="Status updated">
+    On completion (success, failure, or cancellation), the attempt status is written back to the database and metrics are emitted.
+  </Step>
+  <Step title="Next schedule computed">
+    `ConnectionManagerWorkflow` sleeps until the next scheduled run time.
+  </Step>
+</Steps>
+
+## Temporal versioning
+
+See the dedicated [Temporal versioning](/architecture/temporal) page for the versioning strategy applied to all Airbyte workflows.

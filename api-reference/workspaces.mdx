@@ -1,0 +1,231 @@
+---
+title: "Workspaces"
+description: "List, create, update, and delete Airbyte workspaces, and manage workspace-level OAuth credentials."
+---
+
+Workspaces are isolated environments within an organization. Each workspace has its own sources, destinations, and connections.
+
+## Endpoints
+
+| Method | Path | Description |
+|---|---|---|
+| `GET` | `/workspaces` | List workspaces |
+| `POST` | `/workspaces` | Create a workspace |
+| `GET` | `/workspaces/{workspaceId}` | Get workspace details |
+| `PATCH` | `/workspaces/{workspaceId}` | Update a workspace |
+| `DELETE` | `/workspaces/{workspaceId}` | Delete a workspace |
+| `PUT` | `/workspaces/{workspaceId}/oauthCredentials` | Create or update OAuth credentials |
+
+## List workspaces
+
+**`GET /workspaces`**
+
+<ParamField query="workspaceIds" type="string[]">
+  Filter by specific workspace UUIDs. Empty list returns all allowed workspaces.
+</ParamField>
+
+<ParamField query="includeDeleted" type="boolean" default="false">
+  Include soft-deleted workspaces in results.
+</ParamField>
+
+<ParamField query="limit" type="integer" default="20">
+  Maximum results to return. Range: 1–100.
+</ParamField>
+
+<ParamField query="offset" type="integer" default="0">
+  Offset for pagination.
+</ParamField>
+
+```bash
+curl --request GET \
+  --url 'https://api.airbyte.com/v1/workspaces?limit=20&offset=0' \
+  --header 'Authorization: Bearer <token>'
+```
+
+## Create a workspace
+
+**`POST /workspaces`**
+
+<ParamField body="name" type="string" required>
+  Name of the workspace.
+</ParamField>
+
+<ParamField body="organizationId" type="string">
+  UUID of the organization to add the workspace to.
+</ParamField>
+
+<ParamField body="regionId" type="string">
+  UUID of the region to associate the workspace with.
+</ParamField>
+
+<ParamField body="notifications" type="object">
+  Notification configuration for the workspace.
+  <Expandable title="properties">
+    <ParamField body="failure" type="object">
+      Notifications sent on sync failure.
+    </ParamField>
+    <ParamField body="success" type="object">
+      Notifications sent on sync success.
+    </ParamField>
+    <ParamField body="connectionUpdate" type="object">
+      Notifications sent on connection schema changes.
+    </ParamField>
+    <ParamField body="syncDisabled" type="object">
+      Notifications sent when a sync is disabled.
+    </ParamField>
+  </Expandable>
+</ParamField>
+
+<CodeGroup>
+
+```bash cURL
+curl --request POST \
+  --url https://api.airbyte.com/v1/workspaces \
+  --header 'Authorization: Bearer <token>' \
+  --header 'Content-Type: application/json' \
+  --data '{"name": "Company Workspace Name"}'
+```
+
+</CodeGroup>
+
+```json
+{
+  "workspaceId": "9924bcd0-99be-453d-ba47-c2c9766f7da5",
+  "name": "Company Workspace Name",
+  "dataResidency": "auto",
+  "notifications": {}
+}
+```
+
+## Get a workspace
+
+**`GET /workspaces/{workspaceId}`**
+
+<ParamField path="workspaceId" type="string" required>
+  UUID of the workspace.
+</ParamField>
+
+### Response
+
+<ResponseField name="workspaceId" type="string" required>
+  UUID of the workspace.
+</ResponseField>
+
+<ResponseField name="name" type="string" required>
+  Name of the workspace.
+</ResponseField>
+
+<ResponseField name="dataResidency" type="string" required>
+  Data residency setting for the workspace (e.g., `auto`).
+</ResponseField>
+
+<ResponseField name="notifications" type="object" required>
+  Notification configuration.
+  <Expandable title="properties">
+    <ResponseField name="failure" type="object">
+      Failure notification config.
+    </ResponseField>
+    <ResponseField name="success" type="object">
+      Success notification config.
+    </ResponseField>
+    <ResponseField name="connectionUpdate" type="object">
+      Connection update notification config.
+    </ResponseField>
+    <ResponseField name="connectionUpdateActionRequired" type="object">
+      Action required notification config.
+    </ResponseField>
+    <ResponseField name="syncDisabled" type="object">
+      Sync disabled notification config.
+    </ResponseField>
+    <ResponseField name="syncDisabledWarning" type="object">
+      Sync disabled warning notification config.
+    </ResponseField>
+  </Expandable>
+</ResponseField>
+
+```bash
+curl --request GET \
+  --url https://api.airbyte.com/v1/workspaces/18dccc91-0ab1-4f72-9ed7-0b8fc27c5826 \
+  --header 'Authorization: Bearer <token>'
+```
+
+## Update a workspace
+
+**`PATCH /workspaces/{workspaceId}`**
+
+<ParamField path="workspaceId" type="string" required>
+  UUID of the workspace.
+</ParamField>
+
+<ParamField body="name" type="string">
+  New name for the workspace.
+</ParamField>
+
+<ParamField body="notifications" type="object">
+  Updated notification configuration.
+</ParamField>
+
+<ParamField body="regionId" type="string">
+  Updated region UUID.
+</ParamField>
+
+```bash
+curl --request PATCH \
+  --url https://api.airbyte.com/v1/workspaces/18dccc91-0ab1-4f72-9ed7-0b8fc27c5826 \
+  --header 'Authorization: Bearer <token>' \
+  --header 'Content-Type: application/json' \
+  --data '{"name": "Updated Workspace Name"}'
+```
+
+## Delete a workspace
+
+**`DELETE /workspaces/{workspaceId}`**
+
+<ParamField path="workspaceId" type="string" required>
+  UUID of the workspace to delete.
+</ParamField>
+
+Returns `204 No Content` on success.
+
+```bash
+curl --request DELETE \
+  --url https://api.airbyte.com/v1/workspaces/18dccc91-0ab1-4f72-9ed7-0b8fc27c5826 \
+  --header 'Authorization: Bearer <token>'
+```
+
+## Create or update OAuth credentials
+
+**`PUT /workspaces/{workspaceId}/oauthCredentials`**
+
+Override the Airbyte-provided OAuth credentials for a specific connector type within a workspace.
+
+<ParamField path="workspaceId" type="string" required>
+  UUID of the workspace.
+</ParamField>
+
+<ParamField body="actorType" type="string" required>
+  Either `source` or `destination`.
+</ParamField>
+
+<ParamField body="name" type="string" required>
+  The connector name, e.g. `google-ads`.
+</ParamField>
+
+<ParamField body="configuration" type="object" required>
+  OAuth credential configuration. Schema matches the connector's OAuth specification.
+</ParamField>
+
+```bash
+curl --request PUT \
+  --url https://api.airbyte.com/v1/workspaces/18dccc91-0ab1-4f72-9ed7-0b8fc27c5826/oauthCredentials \
+  --header 'Authorization: Bearer <token>' \
+  --header 'Content-Type: application/json' \
+  --data '{
+    "actorType": "source",
+    "name": "google-ads",
+    "configuration": {
+      "client_id": "YOUR_CLIENT_ID",
+      "client_secret": "YOUR_CLIENT_SECRET"
+    }
+  }'
+```

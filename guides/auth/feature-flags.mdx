@@ -1,0 +1,247 @@
+---
+title: "Feature flags"
+description: "Configure and evaluate feature flags in Airbyte using ConfigFileClient, LaunchDarkly, or the Feature Flag Service."
+---
+
+The `airbyte-featureflag` module provides a unified interface for managing feature flags across different Airbyte environments. It supports multiple backend providers with context-aware evaluation based on users, workspaces, organizations, and other entities.
+
+## Core concepts
+
+### Flag types
+
+Feature flags use a hierarchical type system:
+
+| Type | Description |
+|---|---|
+| `Temporary<T>` | Flags intended to be removed after a feature rolls out completely. |
+| `Permanent<T>` | Long-term configuration toggles that will not be removed. |
+| `EnvVar` | Environment variable-based flags. A transitional pattern being migrated to proper flags. |
+
+```kotlin
+// Temporary feature flag
+object FieldSelectionEnabled : Temporary<Boolean>(
+    key = "connection.columnSelection",
+    default = true
+)
+
+// Permanent configuration flag
+object HeartbeatMaxSecondsBetweenMessages : Permanent<String>(
+    key = "heartbeat-max-seconds-between-messages",
+    default = "10800"
+)
+
+// Environment variable flag (deprecated pattern)
+object LogConnectorMessages : EnvVar(envVar = "LOG_CONNECTOR_MESSAGES")
+```
+
+## Client implementations
+
+### ConfigFileClient
+
+The default client. Reads flags from a YAML file, watches it for changes, and evaluates flags per context. Use this for self-hosted deployments where you do not have LaunchDarkly.
+
+- Supports file watching for real-time updates without restart.
+- Thread-safe via `ReentrantReadWriteLock`.
+- Falls back to the flag's default value when the flag is not defined in the file.
+
+Configure the path to your flags file:
+
+```yaml
+airbyte:
+  feature-flag:
+    path: "/path/to/flags.yml"
+```
+
+### LaunchDarklyClient
+
+Production-ready client for deployments that use LaunchDarkly. Supports advanced targeting rules, percentage rollouts, and real-time flag updates from the LaunchDarkly dashboard.
+
+```yaml
+airbyte:
+  feature-flag:
+    client: "launchdarkly"
+    api-key: "your-launchdarkly-api-key"
+```
+
+### FeatureFlagServiceClient
+
+HTTP-based client that delegates flag evaluation to a custom Airbyte feature flag service.
+
+```yaml
+airbyte:
+  feature-flag:
+    client: "ffs"
+    base-url: "https://feature-flag-service.example.com"
+```
+
+### TestClient
+
+A mock implementation for use in tests. Override any flag value in your test setup:
+
+```kotlin
+@MicronautTest
+class MyServiceTest {
+
+    @MockBean(FeatureFlagClient::class)
+    fun mockFeatureFlagClient(): TestClient {
+        return TestClient(mapOf(
+            "field-selection-enabled" to true,
+            "destination-timeout-seconds" to 300
+        ))
+    }
+}
+```
+
+## Context types
+
+Flags are evaluated within a context that represents the entity being checked:
+
+| Context | Description |
+|---|---|
+| `User` | User-specific targeting, optionally with an email attribute. |
+| `Workspace` | Workspace-scoped feature rollouts. |
+| `Organization` | Organization-level feature control. |
+| `Connection` | Connection-specific flags. |
+| `Source` / `Destination` | Actor-specific targeting. |
+| `SourceDefinition` / `DestinationDefinition` | Connector-type targeting. |
+| `Dataplane` / `DataplaneGroup` | Infrastructure-level targeting. |
+| `CloudProvider` / `GeographicRegion` | Geographic targeting. |
+| `Multi` | Combine multiple contexts for complex evaluation logic. |
+
+```kotlin
+// Single context
+val context = Workspace(workspaceId)
+val isEnabled = featureFlagClient.boolVariation(FieldSelectionEnabled, context)
+
+// Multi-context evaluation
+val user = User(userId, EmailAttribute("user@company.com"))
+val workspace = Workspace(workspaceId)
+val connection = Connection(connectionId)
+
+val context = Multi(listOf(user, workspace, connection))
+val timeoutSeconds = featureFlagClient.intVariation(DestinationTimeoutSeconds, context)
+```
+
+## flags.yml format
+
+The `ConfigFileClient` reads flags from a YAML file. Here is the complete format with all supported options:
+
+```yaml
+flags:
+  # Simple boolean flag
+  - name: feature-enabled
+    serve: true
+
+  # Flag with context-based overrides
+  - name: orchestrator-fetches-from-init
+    serve: false
+    context:
+      - type: "workspace"
+        include:
+          - "3d2985a0-a412-45f4-9124-e15800b739be"
+        serve: true
+
+  # String flag
+  - name: heartbeat-max-seconds-between-messages
+    serve: "10800"
+
+  # Integer flag
+  - name: destination-timeout.seconds
+    serve: 86400
+```
+
+### Real-world flags.yml example
+
+The following is from the Airbyte source repository:
+
+```yaml
+flags:
+  - name: connection.columnSelection
+    serve: true
+  - name: destination-timeout-enabled
+    serve: true
+  - name: destination-timeout.failSync
+    serve: true
+  - name: destination-timeout.seconds
+    serve: 86400
+  - name: connectors.versionOverridesEnabled
+    serve: true
+  - name: heartbeat-max-seconds-between-messages
+    serve: "10800"
+  - name: platform.replication-debug-log-level-enabled
+    serve: false
+    context:
+      - type: workspace
+        include:
+          - 0ebcab60-29f1-426a-8208-c05a12a2335c
+        serve: true
+```
+
+### Context override rules
+
+Each flag can have multiple context overrides. When evaluating a flag:
+
+1. Airbyte checks each context block in order.
+2. If the current evaluation context matches the `type` and is in the `include` list, the `serve` value from that block is returned.
+3. If no context block matches, the top-level `serve` value is used.
+
+## Adding a new flag
+
+<Steps>
+  <Step title="Define the flag">
+    Add the flag definition to `FlagDefinitions.kt`:
+
+    ```kotlin
+    object NewFeature : Temporary<Boolean>(key = "new.feature", default = false)
+    ```
+  </Step>
+  <Step title="Use the flag in code">
+    Inject `FeatureFlagClient` and call the appropriate variation method:
+
+    ```kotlin
+    @Inject
+    lateinit var featureFlagClient: FeatureFlagClient
+
+    fun someBusinessLogic() {
+        val context = Workspace(workspaceId)
+        if (featureFlagClient.boolVariation(NewFeature, context)) {
+            enableNewBehavior()
+        }
+    }
+    ```
+  </Step>
+  <Step title="Configure the flag">
+    Add the flag to your `flags.yml` (for `ConfigFileClient`) or create it in LaunchDarkly (for `LaunchDarklyClient`):
+
+    ```yaml
+    flags:
+      - name: new.feature
+        serve: false
+    ```
+  </Step>
+</Steps>
+
+## Migrating from environment variables
+
+```kotlin
+// Old pattern
+val enabled = System.getenv("MY_FEATURE")?.toBoolean() ?: false
+
+// New pattern
+object MyFeature : Temporary<Boolean>(key = "my.feature", default = false)
+val enabled = featureFlagClient.boolVariation(MyFeature, context)
+```
+
+## Available flags
+
+The module ships with over 100 predefined flags. Key categories include:
+
+| Category | Examples |
+|---|---|
+| Connection management | `connection.columnSelection`, sync scheduling, timeout handling |
+| Connector management | OAuth flows, breaking change detection, version overrides |
+| Platform features | Workload management, secret handling, async profiling |
+| Billing and licensing | Usage tracking, enterprise entitlements |
+| Development | Debug log levels, acceptance test overrides |
+
+See `FlagDefinitions.kt` in the `airbyte-featureflag` module for the complete list.

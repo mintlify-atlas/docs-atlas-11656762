@@ -1,0 +1,177 @@
+---
+title: "Authentication"
+description: "Understand how Airbyte authenticates users and API clients, and how to manage roles and permissions."
+---
+
+Airbyte supports multiple authentication modes depending on the edition you are running: Community, Enterprise, or Cloud.
+
+## Authentication modes
+
+| Mode | When active | Description |
+|---|---|---|
+| `NONE` | Community (security disabled) | No authentication. All requests are accepted. Not recommended for production. |
+| `SIMPLE` | Community (security enabled) | Single-user username and password login. |
+| `OIDC` | Enterprise, Cloud | OpenID Connect via Keycloak or an external identity provider. |
+
+The active mode is determined by the `AirbyteEdition` and the `airbyte.auth.identity-provider.type` configuration:
+
+```yaml
+global:
+  edition: enterprise  # community | enterprise | cloud
+  auth:
+    identityProvider:
+      type: oidc  # or 'simple' for username/password
+```
+
+## Community: username and password
+
+In Community edition with security enabled, Airbyte uses a simple username/password login. The initial user is created from the `initialUserConfig` configured at startup.
+
+<Note>
+  Community edition with `SIMPLE` auth does not support multiple users or organization-level roles.
+</Note>
+
+## Enterprise: Keycloak SSO
+
+Enterprise deployments use Keycloak as the identity provider. Keycloak can be configured to federate with external identity providers (SAML, LDAP, Google Workspace, Okta, and others).
+
+When `identityProvider.type` is not set to the simple default, the auth mode switches to `OIDC`. JWT tokens issued by Keycloak are validated on every request:
+
+```yaml
+global:
+  auth:
+    identityProvider:
+      type: oidc
+      oidc:
+        domain: "https://your-keycloak-host/realms/airbyte"
+        clientId: "airbyte-platform"
+        clientSecret: "<secret>"
+```
+
+## API authentication: bearer tokens
+
+All Airbyte API requests require a `Bearer` token in the `Authorization` header.
+
+### Creating an application
+
+Create an application (service account) to obtain a `clientId` and `clientSecret`:
+
+```bash
+curl -X POST https://api.airbyte.com/v1/applications \
+  -H "Authorization: Bearer <admin-token>" \
+  -H "Content-Type: application/json" \
+  -d '{"name": "my-etl-pipeline"}'
+```
+
+The response includes `clientId`, `clientSecret`, and `createdAt`.
+
+### Exchanging credentials for a token
+
+Use the client credentials flow to exchange your `clientId` and `clientSecret` for an access token:
+
+```bash
+curl -X POST https://api.airbyte.com/v1/applications/token \
+  -H "Content-Type: application/json" \
+  -d '{
+    "client_id": "<clientId>",
+    "client_secret": "<clientSecret>",
+    "grant_type": "client_credentials"
+  }'
+```
+
+The response:
+
+```json
+{
+  "access_token": "eyJ...",
+  "token_type": "Bearer",
+  "expires_in": 3600
+}
+```
+
+Pass the `access_token` value in subsequent API calls:
+
+```bash
+curl https://api.airbyte.com/v1/connections \
+  -H "Authorization: Bearer eyJ..."
+```
+
+<Warning>
+  Access tokens expire. Your application should handle `401 Unauthorized` responses by requesting a new token.
+</Warning>
+
+## Users
+
+Airbyte users are represented by the `UserResponse` schema:
+
+| Field | Description |
+|---|---|
+| `id` | Internal UUID for the user. |
+| `name` | Display name. |
+| `email` | Email address used for login and notifications. |
+
+User status can be `invited`, `registered`, or `disabled`.
+
+## Roles and permissions
+
+Airbyte uses role-based access control (RBAC) at both the workspace and organization level.
+
+### Auth roles
+
+| Role | Authority | Description |
+|---|---|---|
+| `OWNER` | 500 | Highest privilege. Full control over resources. |
+| `ADMIN` | 400 | Can manage users and all resources. |
+| `EDITOR` | 300 | Can create and modify resources. |
+| `READER` | 200 | Read-only access. |
+| `AUTHENTICATED_USER` | 100 | Any authenticated user (instance-level only). |
+
+### Permission types
+
+Permissions are scoped to either a workspace or an organization:
+
+| Permission type | Scope |
+|---|---|
+| `workspace_admin` | Workspace |
+| `workspace_editor` | Workspace |
+| `workspace_runner` | Workspace |
+| `workspace_reader` | Workspace |
+| `organization_admin` | Organization |
+| `organization_editor` | Organization |
+| `organization_runner` | Organization |
+| `organization_reader` | Organization |
+| `organization_member` | Organization |
+
+<Note>
+  `instance_admin` is an internal-only permission and is not available through the public API.
+</Note>
+
+### Granting a permission
+
+```bash
+curl -X POST https://api.airbyte.com/v1/permissions \
+  -H "Authorization: Bearer <token>" \
+  -H "Content-Type: application/json" \
+  -d '{
+    "permissionType": "workspace_editor",
+    "userId": "user-uuid",
+    "workspaceId": "workspace-uuid"
+  }'
+```
+
+### Listing permissions
+
+```bash
+curl "https://api.airbyte.com/v1/permissions?userId=user-uuid" \
+  -H "Authorization: Bearer <token>"
+```
+
+## Auth providers
+
+The `AuthProvider` field on a user record indicates how the user authenticates:
+
+| Value | Description |
+|---|---|
+| `airbyte` | Default. Username and password managed by Airbyte/Keycloak. |
+| `google_identity_platform` | Google Identity Platform (Cloud). |
+| `keycloak` | Keycloak SSO (Enterprise). |

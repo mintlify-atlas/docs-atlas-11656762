@@ -1,0 +1,152 @@
+---
+title: "Sync modes"
+description: "Sync modes control how Airbyte reads data from the source and writes it to the destination for each configured stream."
+---
+
+Each stream in a connection has a `syncMode` that combines a source read strategy with a destination write strategy. The available modes depend on what the source connector supports.
+
+## Available sync modes
+
+### Full refresh | Overwrite
+
+`full_refresh_overwrite`
+
+Airbyte reads every record from the source on each sync and replaces all existing data in the destination table.
+
+**Use when:**
+- The source dataset is small and fast to read.
+- You always want the destination to be an exact mirror of the source.
+- Records can be deleted at the source and those deletions should be reflected in the destination.
+
+**Trade-offs:** Every sync is a full re-read of the source. For large datasets this consumes more API quota or database load.
+
+---
+
+### Full refresh | Append
+
+`full_refresh_append`
+
+Airbyte reads every record from the source on each sync and appends all records to the destination. Existing rows are not removed.
+
+**Use when:**
+- You want to keep a historical record of every version of every row.
+- The destination table is an append-only log.
+
+**Trade-offs:** The destination table grows with every sync. Querying current state requires deduplication logic.
+
+---
+
+### Incremental | Append
+
+`incremental_append`
+
+Airbyte reads only records that are new or modified since the last sync, identified by a cursor field (such as `updated_at`). New records are appended to the destination.
+
+**Use when:**
+- The source dataset is large and you want to minimize data transfer.
+- The source supports a cursor field (a timestamp or auto-incrementing ID).
+- You want a historical log of changes.
+
+**Cursor field:** A field in the source schema used to determine whether a record is new since the last sync. You specify this in the `cursorField` array on the stream configuration. If the source defines a default cursor, you can leave `cursorField` empty.
+
+**Trade-offs:** If records are updated at the source, both the old and new versions exist in the destination. Querying the latest state requires a `DISTINCT ON` or window function.
+
+---
+
+### Incremental | Append + Deduped
+
+`incremental_deduped_history`
+
+Airbyte reads only new or changed records (using a cursor) and writes them to an intermediate raw table. It then runs a deduplication step to produce a final table containing only the most recent record per primary key.
+
+**Use when:**
+- You want efficient incremental reads.
+- You need the destination to contain only the current state of each row (no duplicates).
+
+**Cursor field:** Same as Incremental | Append. Required unless the source defines a default.
+
+**Primary key:** The field or combination of fields that uniquely identifies a record. Specified in the `primaryKey` array on the stream configuration. Required unless the source schema already defines a primary key.
+
+**Trade-offs:** Requires the destination to support `MERGE` or equivalent upsert operations. Adds a processing step to each sync.
+
+---
+
+## Sync mode compatibility
+
+Not every source supports every sync mode. Use `GET /streams` to discover which modes are available for a given source–destination pair.
+
+| Mode | Source must support | Destination must support |
+|---|---|---|
+| Full refresh \| Overwrite | Any | Overwrite (truncate + insert) |
+| Full refresh \| Append | Any | Append |
+| Incremental \| Append | Incremental (cursor field) | Append |
+| Incremental \| Append + Deduped | Incremental (cursor field) | Upsert / dedup |
+
+## Configuring sync modes via API
+
+Stream-level settings are specified in the `configurations.streams` array on the connection:
+
+```json
+{
+  "sourceId": "95e66a59-8045-4307-9678-63bc3c9b8c93",
+  "destinationId": "e478de0d-a3a0-475c-b019-25f7dd29e281",
+  "configurations": {
+    "streams": [
+      {
+        "name": "orders",
+        "syncMode": "incremental_deduped_history",
+        "cursorField": ["updated_at"],
+        "primaryKey": [["order_id"]]
+      },
+      {
+        "name": "products",
+        "syncMode": "full_refresh_overwrite"
+      }
+    ]
+  }
+}
+```
+
+## Getting available stream properties
+
+Call `GET /streams` before configuring a connection to see which sync modes each stream supports and whether the source defines a cursor or primary key:
+
+```bash
+curl "https://api.airbyte.com/v1/streams?sourceId=95e66a59-8045-4307-9678-63bc3c9b8c93" \
+  -H "Authorization: Bearer <token>"
+```
+
+The response includes a `StreamProperties` object per stream:
+
+```json
+[
+  {
+    "streamName": "orders",
+    "syncModes": ["incremental_append", "incremental_deduped_history", "full_refresh_overwrite"],
+    "defaultCursorField": ["updated_at"],
+    "sourceDefinedCursorField": true,
+    "sourceDefinedPrimaryKey": [["order_id"]]
+  }
+]
+```
+
+<Note>
+  When `sourceDefinedCursorField` is `true`, you do not need to specify `cursorField` in the stream configuration. Airbyte uses the source-defined cursor automatically.
+</Note>
+
+## Choosing the right mode
+
+<AccordionGroup>
+  <Accordion title="Which mode is fastest to set up?">
+    **Full refresh | Overwrite** requires no additional configuration — no cursor field or primary key. It is the safest starting point for new connections.
+  </Accordion>
+  <Accordion title="Which mode uses the least bandwidth?">
+    Incremental modes (`incremental_append` and `incremental_deduped_history`) read only records changed since the last sync, which dramatically reduces data transfer for large datasets.
+  </Accordion>
+  <Accordion title="Which mode gives me the cleanest destination table?">
+    **Incremental | Append + Deduped** (`incremental_deduped_history`) maintains a final deduplicated table alongside the raw history. It provides both an up-to-date view and a full audit trail.
+  </Accordion>
+  <Accordion title="What if my source does not support a cursor field?">
+    Use **Full refresh | Overwrite** or **Full refresh | Append**. Without a cursor field, Airbyte cannot determine which records changed since the last sync.
+  </Accordion>
+</AccordionGroup>

@@ -1,0 +1,192 @@
+---
+title: "Source connectors"
+description: "Create, configure, and manage source connectors that read data into Airbyte."
+---
+
+A source connector reads records from an external system—a database, API, or file—and makes them available for Airbyte connections to sync to a destination.
+
+## Create a source via the UI
+
+<Steps>
+  <Step title="Navigate to Sources">
+    In the left sidebar, click **Sources**, then click **New source**.
+  </Step>
+
+  <Step title="Select a connector">
+    Search for or browse the connector catalog and select the connector type you want to use (for example, `postgres`, `github`, or `salesforce`).
+  </Step>
+
+  <Step title="Configure the source">
+    Fill in the required fields. These vary by connector but typically include:
+    - A display name for this source instance.
+    - Connection credentials (host, port, username, password, or API key).
+    - Sync parameters (start date, stream selection).
+
+    <Tip>
+      For sources that support OAuth, click the **Authenticate** button instead of entering credentials manually. Airbyte will redirect you to the identity provider and exchange the token automatically.
+    </Tip>
+  </Step>
+
+  <Step title="Test the connection">
+    Click **Test connection**. Airbyte runs a `check` command against the connector to validate credentials and reachability.
+
+    If the test fails, review the error message. Common causes:
+    - Incorrect credentials or expired tokens.
+    - Network connectivity issues (firewall rules, VPC configuration).
+    - Missing required fields.
+  </Step>
+
+  <Step title="Save the source">
+    Click **Set up source**. The source is now available to use in connections.
+  </Step>
+</Steps>
+
+## Create a source via the API
+
+The Airbyte API base URL is `https://api.airbyte.com/v1`.
+
+### Create a source
+
+`POST /sources`
+
+Required fields: `name`, `workspaceId`, `configuration`. The `configuration` object must include `airbyte_source_name` matching the connector type.
+
+```bash
+curl -X POST https://api.airbyte.com/v1/sources \
+  -H "Authorization: Bearer <token>" \
+  -H "Content-Type: application/json" \
+  -d '{
+    "name": "My Postgres Source",
+    "workspaceId": "744cc0ed-7f05-4949-9e60-2a814f90c035",
+    "configuration": {
+      "airbyte_source_name": "postgres",
+      "host": "db.example.com",
+      "port": 5432,
+      "database": "analytics",
+      "username": "airbyte_user",
+      "password": "secret",
+      "ssl": true
+    }
+  }'
+```
+
+Response (HTTP 200):
+
+```json
+{
+  "sourceId": "0c31738c-0b2d-4887-b506-e2cd1c39cc35",
+  "name": "My Postgres Source",
+  "sourceType": "postgres",
+  "workspaceId": "744cc0ed-7f05-4949-9e60-2a814f90c035",
+  "definitionId": "321d9b60-11d1-44cb-8c92-c246d53bf98e",
+  "createdAt": 1701234567
+}
+```
+
+### List sources
+
+`GET /sources`
+
+Filter by workspace and paginate with `limit` (default 20, max 100) and `offset`.
+
+```bash
+curl "https://api.airbyte.com/v1/sources?workspaceIds=744cc0ed-7f05-4949-9e60-2a814f90c035&limit=20&offset=0" \
+  -H "Authorization: Bearer <token>"
+```
+
+### Get a source
+
+`GET /sources/{sourceId}`
+
+```bash
+curl "https://api.airbyte.com/v1/sources/18dccc91-0ab1-4f72-9ed7-0b8fc27c5826" \
+  -H "Authorization: Bearer <token>"
+```
+
+### Update a source (partial)
+
+`PATCH /sources/{sourceId}`
+
+Only the fields you provide are updated.
+
+```bash
+curl -X PATCH "https://api.airbyte.com/v1/sources/18dccc91-0ab1-4f72-9ed7-0b8fc27c5826" \
+  -H "Authorization: Bearer <token>" \
+  -H "Content-Type: application/json" \
+  -d '{"name": "My Renamed Source"}'
+```
+
+### Replace a source (full)
+
+`PUT /sources/{sourceId}`
+
+Fully overwrites the source configuration.
+
+### Delete a source
+
+`DELETE /sources/{sourceId}`
+
+Returns HTTP 204 on success.
+
+## OAuth sources
+
+For connectors that support OAuth (e.g., Google Ads, Salesforce, GitHub), use the `initiateOAuth` endpoint to get a redirect URL:
+
+`POST /sources/initiateOAuth`
+
+```bash
+curl -X POST https://api.airbyte.com/v1/sources/initiateOAuth \
+  -H "Authorization: Bearer <token>" \
+  -H "Content-Type: application/json" \
+  -d '{
+    "sourceType": "google-ads",
+    "workspaceId": "744cc0ed-7f05-4949-9e60-2a814f90c035",
+    "redirectUrl": "https://app.example.com/oauth/callback"
+  }'
+```
+
+Response:
+
+```json
+{
+  "redirectUrl": "https://accounts.google.com/o/oauth2/..."
+}
+```
+
+Redirect the user to `redirectUrl`. After the user authenticates, the IdP redirects back to Airbyte, which stores the access and refresh tokens as a secret. The `secretId` returned in the callback query parameter can then be passed as `secretId` when creating the source.
+
+## Connection testing
+
+Airbyte performs a `check_connection` job against the connector before saving a source. The job result is one of:
+
+| Status | Meaning |
+|---|---|
+| `succeeded` | Credentials are valid and the source is reachable. |
+| `failed` | The check failed. Inspect the job logs for details. |
+
+You can re-run a connection test from the source detail page in the UI at any time.
+
+## Common troubleshooting
+
+<AccordionGroup>
+  <Accordion title="Connection test fails with authentication error">
+    - Verify the API key, username, or password is correct and has not expired.
+    - For OAuth sources, re-authenticate using the **Reconnect** button in the UI.
+    - Check that the credentials have the necessary read permissions on the source.
+  </Accordion>
+
+  <Accordion title="Connection test fails with network error">
+    - Ensure the Airbyte server can reach the source host. For private networks, configure SSH tunneling or IP allowlisting.
+    - Check firewall and security group rules.
+    - For database sources, verify the host and port are correct and the database is accepting connections.
+  </Accordion>
+
+  <Accordion title="Streams are missing from the catalog">
+    - The connector's `discover` command determines which streams are available. Ensure the credentials have permissions to list tables or endpoints.
+    - For databases, check that the user has `SELECT` privileges on the relevant schemas.
+  </Accordion>
+
+  <Accordion title="Sync fails with schema change">
+    - If the source schema changed, Airbyte may detect it as a breaking or non-breaking change. Review the schema change in the connection's **Schema** tab and propagate or ignore it.
+  </Accordion>
+</AccordionGroup>

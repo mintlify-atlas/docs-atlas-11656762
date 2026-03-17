@@ -1,0 +1,168 @@
+---
+title: "Metrics"
+description: "Configure Airbyte to emit metrics to OTLP or StatsD backends, and understand the available metric names."
+---
+
+Airbyte emits metrics through the `airbyte-metrics` module using [Micrometer](https://micrometer.io). Metrics are disabled by default and must be explicitly enabled.
+
+## Enabling metrics
+
+Metrics are configured in `values.yaml` for Helm deployments:
+
+```yaml
+global:
+  metrics:
+    enabled: true
+```
+
+Once enabled, choose one or both backends:
+
+### OTLP (OpenTelemetry)
+
+```yaml
+global:
+  metrics:
+    enabled: true
+    otlp:
+      enabled: true
+      collectorEndpoint: "http://otel-collector:4317"
+    otel:
+      exporter:
+        name: otlp
+        protocol: grpc
+        timeout: 30000
+        metricExportInterval: 10000
+```
+
+The `OTEL_SERVICE_NAME` environment variable controls the `service.name` tag on all metrics. If not set, the application name is used.
+
+### StatsD / Datadog
+
+```yaml
+global:
+  metrics:
+    enabled: true
+    statsd:
+      enabled: true
+      flavor: datadog
+      host: "datadog-agent.monitoring.svc.cluster.local"
+      port: "8125"
+```
+
+The StatsD registry configurer automatically tags all metrics with `service` (from `DD_SERVICE` env var) and `version` (from `DD_VERSION` env var or the Airbyte version string).
+
+## Metrics reporter
+
+For OSS deployments, Airbyte ships a dedicated `airbyte-metrics` pod that periodically queries internal state and emits aggregate metrics:
+
+```yaml
+metrics:
+  enabled: false  # set to true to deploy the metrics-reporter
+  image:
+    repository: airbyte/metrics-reporter
+  serviceName: airbyte-metrics
+```
+
+## Public metrics
+
+The following metrics are marked `PUBLIC` and are intended for external dashboards:
+
+| Metric name | Type | Description |
+|---|---|---|
+| `api_requests` | Counter | Count of requests to the Airbyte API. |
+| `gb_moved` | Gauge | Gigabytes moved during a sync job. |
+| `syncs_duration` | Gauge | Sync duration in seconds. |
+| `syncs` | Counter | Count of syncs by status. |
+
+## Key internal metrics
+
+### Sync and job metrics
+
+| Metric name | Description |
+|---|---|
+| `attempt_created` | Increments when a new attempt is created. |
+| `attempt_completed` | Increments when an attempt completes. |
+| `attempt_failed_by_failure_origin` | Failure count tagged by origin and type. |
+| `job_completed` | Increments when a job reaches a terminal state. |
+| `job_succeeded_by_release_stage` | Job successes tagged by connector release stage. |
+| `job_failed_by_release_stage` | Job failures tagged by connector release stage. |
+| `num_pending_jobs` | Current count of pending jobs. |
+| `num_running_jobs` | Current count of running jobs. |
+| `oldest_pending_job_age_secs` | Age in seconds of the oldest pending job. |
+| `oldest_running_job_age_secs` | Age in seconds of the oldest running job. |
+| `overall_job_runtime_in_last_hour_by_terminal_state_secs` | Total runtime for jobs that completed in the last hour, tagged by final status. |
+
+### Temporal workflow metrics
+
+| Metric name | Description |
+|---|---|
+| `temporal_workflow_attempt` | Count of workflow execution attempts. |
+| `temporal_workflow_success` | Count of successful workflow completions. |
+| `temporal_workflow_failure` | Count of workflow failures. |
+| `workflows_healed` | Workflows repaired by the self-healing cron. |
+
+### Schema change metrics
+
+| Metric name | Description |
+|---|---|
+| `breaking_change_detected` | A breaking schema change was detected on a stream. |
+| `non_breaking_change_detected` | A non-breaking schema change was detected. |
+| `schema_change_auto_propagated` | A schema change was automatically propagated. |
+
+### Notification metrics
+
+| Metric name | Description |
+|---|---|
+| `notifications_sent` | Count of notifications sent. |
+| `notification_success` | A notification was sent successfully. |
+| `notification_failure` | A notification failed to send. |
+
+### Workload metrics
+
+| Metric name | Description |
+|---|---|
+| `workload_claimed` | Increments when the launcher claims a workload. |
+| `workload_processed` | Increments when the launcher processes a workload. |
+| `workload_heartbeat` | Count of workload heartbeat calls. |
+| `workload_launch_duration` | Distribution of workload launch durations. |
+| `workload_queue_size` | Current workload queue depth. |
+| `workload_stage_duration` | Distribution of individual stage durations. |
+
+## Setting up dashboards
+
+<Tabs>
+  <Tab title="Grafana + OTLP">
+    1. Deploy an OpenTelemetry Collector configured to receive gRPC on port 4317 and forward to your Prometheus or Grafana endpoint.
+    2. Enable OTLP in `values.yaml` with `collectorEndpoint` pointing at the collector.
+    3. In Grafana, use the `syncs` metric (tagged by `status`) to build a sync success rate panel.
+    4. Alert on `oldest_pending_job_age_secs` exceeding your SLA threshold.
+  </Tab>
+  <Tab title="Datadog">
+    1. Deploy the Datadog agent as a DaemonSet and set `DD_SERVICE` and `DD_VERSION` environment variables on your Airbyte pods.
+    2. Enable StatsD in `values.yaml` with `flavor: datadog` and point at the Datadog agent.
+    3. In Datadog, search for metrics prefixed with your service name.
+    4. Create a monitor on `syncs` grouped by `status` to alert on failure spikes.
+  </Tab>
+</Tabs>
+
+## Common queries
+
+### Sync success rate (PromQL)
+
+```promql
+sum(rate(syncs{status="succeeded"}[5m]))
+/
+sum(rate(syncs[5m]))
+```
+
+### P95 sync duration (PromQL)
+
+```promql
+histogram_quantile(0.95, rate(syncs_duration_bucket[1h]))
+```
+
+### Pending job backlog (PromQL)
+
+```promql
+num_pending_jobs
+```

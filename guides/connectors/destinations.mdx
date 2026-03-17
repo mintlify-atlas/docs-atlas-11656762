@@ -1,0 +1,228 @@
+---
+title: "Destination connectors"
+description: "Create, configure, and manage destination connectors that receive synced data."
+---
+
+A destination connector receives records from Airbyte connections and writes them to a target system such as a data warehouse, database, or object store.
+
+## Create a destination via the UI
+
+<Steps>
+  <Step title="Navigate to Destinations">
+    In the left sidebar, click **Destinations**, then click **New destination**.
+  </Step>
+
+  <Step title="Select a connector">
+    Search for or browse the destination catalog and select the connector you want to use (for example, `bigquery`, `snowflake`, or `postgres`).
+  </Step>
+
+  <Step title="Configure the destination">
+    Fill in the required fields. These vary by destination but typically include:
+    - A display name for this destination instance.
+    - Connection credentials (host, port, username, password, or service account key).
+    - Target schema or dataset.
+    - SSL and tunnel settings.
+  </Step>
+
+  <Step title="Test the connection">
+    Click **Test connection**. Airbyte runs a `check` command to validate credentials and write access.
+  </Step>
+
+  <Step title="Save the destination">
+    Click **Set up destination**. The destination is now available to use in connections.
+  </Step>
+</Steps>
+
+## Create a destination via the API
+
+The Airbyte API base URL is `https://api.airbyte.com/v1`.
+
+### Create a destination
+
+`POST /destinations`
+
+Required fields: `name`, `workspaceId`, `configuration`. The `configuration` object must include `airbyte_destination_name` matching the connector type.
+
+```bash
+curl -X POST https://api.airbyte.com/v1/destinations \
+  -H "Authorization: Bearer <token>" \
+  -H "Content-Type: application/json" \
+  -d '{
+    "name": "Postgres",
+    "workspaceId": "2155ae5a-de39-4808-af6a-16fe7b8b4ed2",
+    "configuration": {
+      "airbyte_destination_name": "postgres",
+      "host": "localhost",
+      "port": 5432,
+      "database": "postgres",
+      "schema": "public",
+      "username": "postgres",
+      "password": "test",
+      "ssl_mode": { "mode": "prefer" },
+      "tunnel_method": { "tunnel_method": "NO_TUNNEL" }
+    }
+  }'
+```
+
+Response (HTTP 200):
+
+```json
+{
+  "destinationId": "af0c3c67-aa61-419f-8922-95b0bf840e86",
+  "name": "Postgres",
+  "destinationType": "postgres",
+  "workspaceId": "2155ae5a-de39-4808-af6a-16fe7b8b4ed2",
+  "definitionId": "321d9b60-11d1-44cb-8c92-c246d53bf98e",
+  "createdAt": 1701234567
+}
+```
+
+### List destinations
+
+`GET /destinations`
+
+```bash
+curl "https://api.airbyte.com/v1/destinations?workspaceIds=2155ae5a-de39-4808-af6a-16fe7b8b4ed2&limit=20&offset=0" \
+  -H "Authorization: Bearer <token>"
+```
+
+### Get a destination
+
+`GET /destinations/{destinationId}`
+
+```bash
+curl "https://api.airbyte.com/v1/destinations/18dccc91-0ab1-4f72-9ed7-0b8fc27c5826" \
+  -H "Authorization: Bearer <token>"
+```
+
+### Update a destination (partial)
+
+`PATCH /destinations/{destinationId}`
+
+```bash
+curl -X PATCH "https://api.airbyte.com/v1/destinations/18dccc91-0ab1-4f72-9ed7-0b8fc27c5826" \
+  -H "Authorization: Bearer <token>" \
+  -H "Content-Type: application/json" \
+  -d '{"name": "Renamed Destination"}'
+```
+
+### Replace a destination (full)
+
+`PUT /destinations/{destinationId}`
+
+Fully overwrites the destination configuration.
+
+### Delete a destination
+
+`DELETE /destinations/{destinationId}`
+
+Returns HTTP 204 on success.
+
+## Common destinations
+
+### BigQuery
+
+```json
+{
+  "airbyte_destination_name": "bigquery",
+  "project_id": "my-gcp-project",
+  "dataset_id": "airbyte_raw",
+  "dataset_location": "US",
+  "credentials_json": "<base64-encoded-service-account-json>"
+}
+```
+
+### Snowflake
+
+```json
+{
+  "airbyte_destination_name": "snowflake",
+  "host": "<account>.snowflakecomputing.com",
+  "role": "AIRBYTE_ROLE",
+  "warehouse": "AIRBYTE_WAREHOUSE",
+  "database": "AIRBYTE_DATABASE",
+  "schema": "AIRBYTE_SCHEMA",
+  "username": "AIRBYTE_USER",
+  "credentials": {
+    "auth_type": "username_and_password",
+    "password": "<password>"
+  }
+}
+```
+
+### PostgreSQL
+
+```json
+{
+  "airbyte_destination_name": "postgres",
+  "host": "db.example.com",
+  "port": 5432,
+  "database": "analytics",
+  "schema": "public",
+  "username": "airbyte_user",
+  "password": "<password>",
+  "ssl_mode": { "mode": "require" },
+  "tunnel_method": { "tunnel_method": "NO_TUNNEL" }
+}
+```
+
+### Amazon S3
+
+```json
+{
+  "airbyte_destination_name": "s3",
+  "s3_bucket_name": "my-data-lake",
+  "s3_bucket_path": "airbyte/data",
+  "s3_bucket_region": "us-east-1",
+  "access_key_id": "<key>",
+  "secret_access_key": "<secret>",
+  "format": { "format_type": "Parquet" }
+}
+```
+
+### Amazon Redshift
+
+```json
+{
+  "airbyte_destination_name": "redshift",
+  "host": "cluster.abc123.us-east-1.redshift.amazonaws.com",
+  "port": 5439,
+  "database": "analytics",
+  "schema": "public",
+  "username": "airbyte_user",
+  "password": "<password>"
+}
+```
+
+## Destination testing
+
+After creating a destination, Airbyte validates the connection by:
+
+1. Running a `check_connection` job with the provided credentials.
+2. Verifying write access to the target schema or bucket.
+
+If the test fails, inspect the error message on the destination detail page or in the job logs.
+
+<Warning>
+  Some destinations require specific permissions. For example, BigQuery needs `BigQuery Data Editor` and `BigQuery Job User` roles; Snowflake needs `INSERT`, `CREATE TABLE`, and `CREATE SCHEMA` privileges on the target database.
+</Warning>
+
+## Common troubleshooting
+
+<AccordionGroup>
+  <Accordion title="Permission denied errors">
+    Verify that the user or service account has write access to the target schema or bucket. For cloud destinations, check IAM roles and policies.
+  </Accordion>
+
+  <Accordion title="SSL connection errors">
+    Set the appropriate `ssl_mode` in the configuration. For PostgreSQL-compatible destinations, `require` or `verify-ca` modes are recommended for production.
+  </Accordion>
+
+  <Accordion title="Schema or table creation failures">
+    Airbyte creates tables automatically in the target schema. Ensure the user has `CREATE TABLE` and `CREATE SCHEMA` privileges.
+  </Accordion>
+
+  <Accordion title="Duplicate records after retries">
+    Airbyte uses upserts when the destination connector supports deduplication. Enable `Dedup + history` or `Overwrite` sync mode on the connection if duplicate records appear.
+  </Accordion>
+</AccordionGroup>

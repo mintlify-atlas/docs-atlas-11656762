@@ -1,0 +1,178 @@
+---
+title: "Applications"
+description: "Manage API applications and obtain access tokens for authenticating with the Airbyte API."
+---
+
+Applications are credentials that allow programmatic access to the Airbyte API. Each application has a `clientId` and `clientSecret` used to obtain Bearer tokens.
+
+## Endpoints
+
+| Method | Path | Description |
+|---|---|---|
+| `GET` | `/applications` | List applications |
+| `POST` | `/applications` | Create an application |
+| `GET` | `/applications/{applicationId}` | Get application details |
+| `DELETE` | `/applications/{applicationId}` | Delete an application |
+| `POST` | `/applications/token` | Get an access token |
+
+## List applications
+
+**`GET /applications`**
+
+Lists all applications the authenticated user has access to.
+
+```bash
+curl --request GET \
+  --url https://api.airbyte.com/v1/applications \
+  --header 'Authorization: Bearer <token>'
+```
+
+### Response
+
+<ResponseField name="applications" type="object[]" required>
+  Array of application objects.
+  <Expandable title="application object">
+    <ResponseField name="id" type="string" required>
+      UUID of the application.
+    </ResponseField>
+    <ResponseField name="name" type="string" required>
+      Name of the application.
+    </ResponseField>
+    <ResponseField name="clientId" type="string" required>
+      Client ID used to obtain access tokens.
+    </ResponseField>
+    <ResponseField name="clientSecret" type="string" required>
+      Client secret used to obtain access tokens.
+    </ResponseField>
+    <ResponseField name="createdAt" type="integer" required>
+      Unix timestamp (ms) when the application was created.
+    </ResponseField>
+  </Expandable>
+</ResponseField>
+
+## Create an application
+
+**`POST /applications`**
+
+<ParamField body="name" type="string" required>
+  Name for the application.
+</ParamField>
+
+```bash
+curl --request POST \
+  --url https://api.airbyte.com/v1/applications \
+  --header 'Authorization: Bearer <token>' \
+  --header 'Content-Type: application/json' \
+  --data '{"name": "my-pipeline-app"}'
+```
+
+```json
+{
+  "id": "780d5bd9-a8a0-43cf-8b35-cc2061ad8319",
+  "name": "my-pipeline-app",
+  "clientId": "b6b159ce-07f4-4699-94b3-3e85b318852e",
+  "clientSecret": "YOUR_SECRET_VALUE",
+  "createdAt": 1717969830000
+}
+```
+
+<Warning>
+  The `clientSecret` is returned only at creation time. Store it securely — it cannot be retrieved again.
+</Warning>
+
+## Get an application
+
+**`GET /applications/{applicationId}`**
+
+<ParamField path="applicationId" type="string" required>
+  ID of the application.
+</ParamField>
+
+```bash
+curl --request GET \
+  --url https://api.airbyte.com/v1/applications/780d5bd9-a8a0-43cf-8b35-cc2061ad8319 \
+  --header 'Authorization: Bearer <token>'
+```
+
+## Delete an application
+
+**`DELETE /applications/{applicationId}`**
+
+<ParamField path="applicationId" type="string" required>
+  ID of the application to delete.
+</ParamField>
+
+<Warning>
+  Deleting an application immediately invalidates any active tokens issued for it.
+</Warning>
+
+```bash
+curl --request DELETE \
+  --url https://api.airbyte.com/v1/applications/780d5bd9-a8a0-43cf-8b35-cc2061ad8319 \
+  --header 'Authorization: Bearer <token>'
+```
+
+## Get an access token
+
+**`POST /applications/token`**
+
+This endpoint does **not** require authentication. Exchange application credentials for a Bearer token used to authenticate API calls.
+
+<ParamField body="client_id" type="string" required>
+  The `clientId` of your application.
+</ParamField>
+
+<ParamField body="client_secret" type="string" required>
+  The `clientSecret` of your application.
+</ParamField>
+
+<ParamField body="grant_type" type="string" required>
+  Must be `client_credentials`.
+</ParamField>
+
+<Tabs>
+  <Tab title="JSON">
+    ```bash
+    curl --request POST \
+      --url https://api.airbyte.com/v1/applications/token \
+      --header 'Content-Type: application/json' \
+      --data '{
+        "client_id": "0da998a2-0d7b-49c7-bb6e-9f7eb9cc68a0",
+        "client_secret": "YOUR_CLIENT_SECRET",
+        "grant_type": "client_credentials"
+      }'
+    ```
+  </Tab>
+  <Tab title="Form-encoded">
+    ```bash
+    curl --request POST \
+      --url https://api.airbyte.com/v1/applications/token \
+      --header 'Content-Type: application/x-www-form-urlencoded' \
+      --data-urlencode 'client_id=0da998a2-0d7b-49c7-bb6e-9f7eb9cc68a0' \
+      --data-urlencode 'client_secret=YOUR_CLIENT_SECRET' \
+      --data-urlencode 'grant_type=client_credentials'
+    ```
+  </Tab>
+</Tabs>
+
+### Response
+
+<ResponseField name="access_token" type="string" required>
+  Bearer token to use in subsequent API requests.
+</ResponseField>
+
+<ResponseField name="token_type" type="string" required>
+  Always `Bearer`.
+</ResponseField>
+
+<ResponseField name="expires_in" type="integer" required>
+  Token lifetime in seconds.
+</ResponseField>
+
+```json
+{
+  "access_token": "eyJhbGci...",
+  "token_type": "Bearer",
+  "expires_in": 3600
+}
+```

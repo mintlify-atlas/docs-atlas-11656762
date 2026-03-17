@@ -1,0 +1,144 @@
+---
+title: "Deploy with Docker Compose"
+description: "Run Airbyte locally or on a server using Docker Compose."
+---
+
+Docker Compose is the fastest way to get Airbyte running. It starts all required services as containers on a single host.
+
+## Prerequisites
+
+<CardGroup cols={2}>
+  <Card title="Docker Desktop" icon="docker">
+    Version 4.x or later. Includes Docker Compose v2.
+  </Card>
+  <Card title="Docker Compose v2" icon="layer-group">
+    Verify with `docker compose version`. Must be v2.x (uses `docker compose`, not `docker-compose`).
+  </Card>
+  <Card title="Available memory" icon="memory">
+    At least 4 GB RAM allocated to Docker.
+  </Card>
+  <Card title="Available disk" icon="hard-drive">
+    At least 10 GB free disk for images and data volumes.
+  </Card>
+</CardGroup>
+
+## Quick start
+
+<Steps>
+  <Step title="Clone the Airbyte repository">
+    ```bash
+    git clone --depth=1 https://github.com/airbytehq/airbyte.git
+    cd airbyte
+    ```
+  </Step>
+
+  <Step title="Start all services">
+    ```bash
+    docker compose up
+    ```
+
+    The first run downloads images and may take several minutes. Once ready, you will see log output from all services.
+  </Step>
+
+  <Step title="Open the web UI">
+    Navigate to [http://localhost:8000](http://localhost:8000) in your browser.
+
+    <Note>
+      The default credentials are `airbyte` / `password`. Change these before exposing the instance to a network.
+    </Note>
+  </Step>
+</Steps>
+
+## Services started
+
+When you run `docker compose up`, the following containers start:
+
+| Service | Description | Default port |
+|---|---|---|
+| `airbyte-server` | Main API server (Micronaut). Exposes ports 8000 (HTTP), 5005 (debug), and 8085 (management). | 8001 |
+| `airbyte-worker` | Executes sync jobs via Temporal workflows. | — |
+| `airbyte-webapp` | React web UI. | 8000 |
+| `airbyte-db` | Internal PostgreSQL database for configuration and job history. | 5432 |
+| `airbyte-temporal` | Temporal workflow engine (`temporalio/auto-setup:1.27.2`). | 7233 |
+| `minio` | Default object storage backend for logs, state, and workload output. | 9000 |
+| `airbyte-bootloader` | Runs database migrations at startup, then exits. | — |
+| `airbyte-workload-launcher` | Launches connector workload pods/containers. | — |
+
+## Data persistence
+
+Airbyte stores data in named Docker volumes. These persist across container restarts.
+
+| Volume | Contents |
+|---|---|
+| `airbyte_db` | PostgreSQL data (configuration, jobs, connections) |
+| `airbyte_minio` | Minio object store (logs, state files, workload output) |
+
+<Warning>
+  Deleting these volumes removes all Airbyte configuration, connection history, and sync logs. Always back up the `airbyte_db` volume before destructive operations.
+</Warning>
+
+## Environment variables
+
+You can customize the deployment by setting environment variables in a `.env` file or exporting them before running `docker compose up`.
+
+| Variable | Description | Default |
+|---|---|---|
+| `AIRBYTE_VERSION` | Version of Airbyte images to pull. | Chart `appVersion` |
+| `AIRBYTE_ROLE` | Deployment role, e.g. `dev` or `prod`. | — |
+| `DATABASE_URL` | JDBC URL for the config/jobs database. | Internal PostgreSQL |
+| `DATABASE_USER` | Database username. | `docker` |
+| `DATABASE_PASSWORD` | Database password. | `docker` |
+| `STORAGE_TYPE` | Object storage backend: `minio`, `s3`, `gcs`, or `azure`. | `minio` |
+| `LOG_LEVEL` | Log verbosity for all services: `DEBUG`, `INFO`, `WARN`, `ERROR`. | `INFO` |
+| `TRACKING_STRATEGY` | Usage analytics strategy: `segment` or `logging`. | `segment` |
+
+## Run in detached mode
+
+```bash
+docker compose up -d
+```
+
+To follow logs after starting in detached mode:
+
+```bash
+docker compose logs -f
+```
+
+## Upgrading
+
+<Steps>
+  <Step title="Stop the running containers">
+    ```bash
+    docker compose down
+    ```
+  </Step>
+
+  <Step title="Pull the updated repository and images">
+    ```bash
+    git pull
+    docker compose pull
+    ```
+  </Step>
+
+  <Step title="Restart">
+    ```bash
+    docker compose up -d
+    ```
+
+    The bootloader container runs database migrations automatically on startup.
+  </Step>
+</Steps>
+
+<Tip>
+  Pin a specific version by setting `VERSION=x.y.z` in your `.env` file before pulling, so upgrades are deliberate.
+</Tip>
+
+## Stopping and cleaning up
+
+```bash
+# Stop containers, keep volumes
+docker compose down
+
+# Stop containers and remove volumes (destructive)
+docker compose down -v
+```

@@ -1,0 +1,161 @@
+---
+title: "Scheduling syncs"
+description: "Configure when Airbyte runs syncs for a connection, from manual triggers to cron expressions."
+---
+
+Airbyte supports three scheduling modes: manual, basic (UI-managed intervals), and cron. You set the schedule when creating or updating a connection via the `schedule` field.
+
+## Schedule types
+
+| `scheduleType` | Description |
+|---|---|
+| `manual` | Syncs only run when you trigger them explicitly via the UI or API. |
+| `cron` | Syncs run according to a cron expression you provide. |
+| `basic` | Syncs run at a fixed interval managed by the Airbyte UI (for example, every hour). This type is read-only in the API response; use `cron` to set custom intervals via API. |
+
+## Manual sync
+
+Set `scheduleType` to `manual` to disable automatic syncs:
+
+```json
+{
+  "schedule": {
+    "scheduleType": "manual"
+  }
+}
+```
+
+Trigger a sync at any time using the Jobs API:
+
+```bash
+curl -X POST https://api.airbyte.com/v1/jobs \
+  -H "Authorization: Bearer <token>" \
+  -H "Content-Type: application/json" \
+  -d '{
+    "connectionId": "9924bcd0-99be-453d-ba47-c2c9766f7da5",
+    "jobType": "sync"
+  }'
+```
+
+The response returns a `JobResponse` with the job ID and initial status:
+
+```json
+{
+  "jobId": 42,
+  "status": "pending",
+  "jobType": "sync",
+  "startTime": "2024-03-25T01:30:50Z",
+  "connectionId": "9924bcd0-99be-453d-ba47-c2c9766f7da5"
+}
+```
+
+## Cron schedule
+
+Set `scheduleType` to `cron` and provide a `cronExpression`:
+
+```json
+{
+  "schedule": {
+    "scheduleType": "cron",
+    "cronExpression": "0 0 * * * ?"
+  }
+}
+```
+
+Airbyte uses the [Quartz cron format](http://www.quartz-scheduler.org/documentation/quartz-2.3.0/tutorials/crontrigger.html), which has six or seven fields:
+
+```
+<second> <minute> <hour> <day-of-month> <month> <day-of-week> [year]
+```
+
+### Common cron expressions
+
+| Expression | Schedule |
+|---|---|
+| `0 0 * * * ?` | Every hour, on the hour |
+| `0 0 0 * * ?` | Every day at midnight UTC |
+| `0 0 6 * * ?` | Every day at 06:00 UTC |
+| `0 0 0 ? * MON` | Every Monday at midnight UTC |
+| `0 0 0 1 * ?` | First day of every month at midnight UTC |
+| `0 0 */6 * * ?` | Every 6 hours |
+| `0 30 9 * * ?` | Every day at 09:30 UTC |
+
+<Note>
+  All cron schedules run in UTC. If you need a local-time schedule, convert the time to UTC before configuring the expression.
+</Note>
+
+## Creating a connection with a schedule via API
+
+```bash
+curl -X POST https://api.airbyte.com/v1/connections \
+  -H "Authorization: Bearer <token>" \
+  -H "Content-Type: application/json" \
+  -d '{
+    "sourceId": "95e66a59-8045-4307-9678-63bc3c9b8c93",
+    "destinationId": "e478de0d-a3a0-475c-b019-25f7dd29e281",
+    "name": "Postgres-to-Bigquery",
+    "schedule": {
+      "scheduleType": "cron",
+      "cronExpression": "0 0 */3 * * ?"
+    }
+  }'
+```
+
+## Updating a schedule
+
+Update the schedule on an existing connection with `PATCH`:
+
+```bash
+curl -X PATCH https://api.airbyte.com/v1/connections/9924bcd0-99be-453d-ba47-c2c9766f7da5 \
+  -H "Authorization: Bearer <token>" \
+  -H "Content-Type: application/json" \
+  -d '{
+    "schedule": {
+      "scheduleType": "cron",
+      "cronExpression": "0 0 0 * * ?"
+    }
+  }'
+```
+
+## Other job types
+
+The `POST /jobs` endpoint supports several job types beyond `sync`:
+
+| `jobType` | Description |
+|---|---|
+| `sync` | Run a standard data sync. |
+| `reset` | Clear the destination data and reset the connection's sync state. The next sync will be a full refresh. |
+| `refresh` | Re-sync one or more streams without clearing other streams. |
+| `clear` | Clear the destination data for the connection without resetting sync state. |
+
+## Checking job status
+
+Poll `GET /jobs/{jobId}` to check progress:
+
+```bash
+curl https://api.airbyte.com/v1/jobs/42 \
+  -H "Authorization: Bearer <token>"
+```
+
+```json
+{
+  "jobId": 42,
+  "status": "succeeded",
+  "jobType": "sync",
+  "startTime": "2024-03-25T01:30:50Z",
+  "duration": "PT8H6M12S",
+  "bytesSynced": 104857600,
+  "rowsSynced": 250000,
+  "connectionId": "9924bcd0-99be-453d-ba47-c2c9766f7da5"
+}
+```
+
+Job statuses are: `pending`, `running`, `succeeded`, `failed`, `incomplete`, and `cancelled`.
+
+## Sync timing and delays
+
+<Warning>
+  The cron expression defines when Airbyte *schedules* a sync, not when data will be available in the destination. Actual execution time depends on job queue depth, connector read speed, and destination write throughput.
+</Warning>
+
+To avoid overloading sources, Airbyte applies a small scheduling jitter by default. You can observe actual start times in the job history.

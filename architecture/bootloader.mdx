@@ -1,0 +1,103 @@
+---
+title: "Bootloader"
+description: "How airbyte-bootloader prepares the environment before the server and workers start."
+---
+
+The `airbyte-bootloader` module runs once at startup, before any other Airbyte service begins accepting work. Its job is to ensure the environment is in a valid, upgraded state.
+
+## Responsibilities
+
+The `Bootloader` class (`io.airbyte.bootloader.Bootloader`) executes these steps in order every time Airbyte starts:
+
+<Steps>
+  <Step title="Initialize auth secrets (if configured)">
+    If a `AuthKubernetesSecretInitializer` is present (typically in Kubernetes deployments), it verifies access to Kubernetes secrets and initializes any missing auth credentials.
+  </Step>
+  <Step title="Initialize databases">
+    Runs the `DatabaseInitializer` for both the **configs database** and the **jobs database**, creating the schemas if they do not yet exist.
+  </Step>
+  <Step title="Check migration compatibility">
+    Reads the current Airbyte version from the jobs database and verifies that no intermediate upgrade step has been skipped.
+
+    Certain version transitions require stopping at a specific version before upgrading further. The required checkpoints are:
+    - `0.32.0-alpha`
+    - `0.37.0-alpha`
+
+    If a skipped upgrade is detected, the bootloader exits with a descriptive error rather than applying an incompatible migration.
+  </Step>
+  <Step title="Check protocol version constraints">
+    Validates that all installed connectors are compatible with the Airbyte Protocol version range supported by the new platform version. If incompatible connectors exist and `AUTO_UPGRADE_CONNECTORS` is disabled, the bootloader aborts to prevent breaking active connections.
+  </Step>
+  <Step title="Run Flyway migrations">
+    Applies pending database migrations to both the configs and jobs databases using Flyway. This step can be skipped by setting `RUN_MIGRATION_AT_STARTUP=false`.
+  </Step>
+  <Step title="Register dataplane">
+    Calls `DataplaneInitializer.createDataplaneIfNotExists()` to ensure at least one dataplane group is registered for routing sync jobs.
+  </Step>
+  <Step title="Create default workspace">
+    If no workspace exists, creates the initial workspace attached to the default organization and the default dataplane group.
+  </Step>
+  <Step title="Create deployment record">
+    If no deployment UUID is present in the jobs database, generates and persists one. The deployment ID is used as a stable instance identifier for analytics.
+  </Step>
+  <Step title="Configure SSO (non-Cloud editions)">
+    On OSS and Enterprise editions, creates or updates the SSO configuration for the default organization based on the configured Keycloak realm.
+  </Step>
+  <Step title="Initialize secret storage">
+    Calls `SecretStorageInitializer.createOrUpdateDefaultSecretStorage()` to ensure the configured secret backend is ready.
+  </Step>
+  <Step title="Set version">
+    Writes the current `AirbyteVersion` string to the jobs database. This value is read on subsequent startups to detect upgrade paths.
+  </Step>
+  <Step title="Run post-load executor">
+    If a `PostLoadExecutor` bean is present, executes it. This extension point is used for edition-specific initialization tasks (e.g., seeding connector definitions on OSS).
+  </Step>
+</Steps>
+
+## Entry point
+
+```kotlin
+// airbyte-bootloader/src/main/kotlin/io/airbyte/bootloader/Application.kt
+fun main(args: Array<String>) {
+  try {
+    val applicationContext =
+      Micronaut
+        .build(*args)
+        .deduceCloudEnvironment(false)
+        .deduceEnvironment(false)
+        .start()
+    applicationContext.getBean<Bootloader>().load()
+    exitProcess(0)
+  } catch (e: Exception) {
+    log.error(e) { "Unable to bootstrap Airbyte environment." }
+    exitProcess(-1)
+  }
+}
+```
+
+The process exits with code `0` on success and `-1` on any failure. This design allows orchestrators (Kubernetes Jobs, Docker `depends_on` with condition `service_completed_successfully`) to gate service startup on bootloader completion.
+
+## Key classes
+
+| Class | Purpose |
+|-------|---------|
+| `Application.kt` | Entry point; starts Micronaut and calls `Bootloader.load()` |
+| `Bootloader.kt` | Orchestrates all startup checks and migrations |
+| `ProtocolVersionChecker` | Validates connector protocol version compatibility |
+| `DataplaneInitializer` | Ensures a default dataplane group record exists |
+| `AuthKubernetesSecretInitializer` | Initializes Kubernetes auth secrets |
+| `SecretStorageInitializer` | Configures the secret storage backend |
+| `DefaultPostLoadExecutor` | Default implementation of post-migration tasks |
+| `DatabaseBeanFactory` | Provides `DatabaseInitializer` and `DatabaseMigrator` beans |
+
+## Deployment lifecycle position
+
+```
+[Database] ──ready──► [Bootloader] ──exit 0──► [Server] ──ready──► [Workers]
+```
+
+In Docker Compose, the server and worker services declare a dependency on the bootloader completing successfully. In Kubernetes, the bootloader runs as an init container or a Job with `restartPolicy: OnFailure`.
+
+<Warning>
+  If the bootloader exits with a non-zero code, do not restart the server or workers. Diagnose the bootloader logs first. Common causes are skipped upgrade versions, incompatible connector protocol versions, or missing database credentials.
+</Warning>

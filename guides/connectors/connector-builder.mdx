@@ -1,0 +1,206 @@
+---
+title: "Connector Builder"
+description: "Build custom low-code source connectors for REST APIs directly in the Airbyte UI."
+---
+
+The Connector Builder is a browser-based tool for creating source connectors without writing code. It uses the Airbyte low-code CDK, which lets you describe an API connector as a YAML manifest. The current CDK version is **7.10.0**.
+
+<Note>
+  The Connector Builder is currently available for **source** connectors only. To build a destination connector, use the Python or Java CDK.
+</Note>
+
+## When to use the Connector Builder
+
+<CardGroup cols={2}>
+  <Card title="Use the Connector Builder" icon="check">
+    - The source is a REST API with standard pagination.
+    - Authentication is API Key, Bearer token, or OAuth 2.0.
+    - Streams return JSON records.
+    - Incremental sync can be driven by a cursor field (e.g., `updated_at`).
+  </Card>
+  <Card title="Use the Python CDK instead" icon="python">
+    - The API uses a non-standard protocol or binary format.
+    - Complex incremental state or resumable full refresh is required.
+    - You need to transform records with arbitrary Python logic.
+    - The source is a database (use the Java JDBC CDK).
+  </Card>
+</CardGroup>
+
+## Open the Connector Builder
+
+1. In the Airbyte UI left sidebar, click **Builder**.
+2. Click **Create a connector**.
+3. Choose **Start from scratch** or select an existing connector as a starting point.
+
+## Build a connector
+
+<Steps>
+  <Step title="Define the connector name and base URL">
+    Enter a display name for your connector and the base URL of the API (for example, `https://api.example.com/v2`).
+  </Step>
+
+  <Step title="Configure authentication">
+    Select the authentication scheme your API uses:
+
+    <Tabs>
+      <Tab title="API Key">
+        Specify the header name and the key value. The builder injects the header on every request.
+
+        ```yaml
+        authenticator:
+          type: ApiKeyAuthenticator
+          header: X-Api-Key
+          api_token: "{{ config['api_key'] }}"
+        ```
+      </Tab>
+      <Tab title="Bearer token">
+        The token is injected as `Authorization: Bearer <token>`.
+
+        ```yaml
+        authenticator:
+          type: BearerAuthenticator
+          api_token: "{{ config['access_token'] }}"
+        ```
+      </Tab>
+      <Tab title="OAuth 2.0">
+        Provide the token refresh URL, client ID, and client secret. The CDK handles token refresh automatically.
+
+        ```yaml
+        authenticator:
+          type: OAuthAuthenticator
+          token_refresh_endpoint: "https://api.example.com/oauth/token"
+          client_id: "{{ config['client_id'] }}"
+          client_secret: "{{ config['client_secret'] }}"
+          refresh_token: "{{ config['refresh_token'] }}"
+        ```
+      </Tab>
+      <Tab title="Basic HTTP">
+        Username and password are base64-encoded into the `Authorization` header.
+
+        ```yaml
+        authenticator:
+          type: BasicHttpAuthenticator
+          username: "{{ config['username'] }}"
+          password: "{{ config['password'] }}"
+        ```
+      </Tab>
+    </Tabs>
+  </Step>
+
+  <Step title="Define streams">
+    A stream maps to one endpoint and one set of records. For each stream:
+
+    1. Enter the stream name (e.g., `orders`).
+    2. Enter the path relative to the base URL (e.g., `/orders`).
+    3. Configure the HTTP method (usually `GET`).
+    4. Set the field path to the records array in the response (e.g., `data.items`).
+
+    **Pagination** — choose the style your API uses:
+
+    | Type | When to use |
+    |---|---|
+    | Page increment | API uses `?page=1&per_page=100` style. |
+    | Offset increment | API uses `?offset=0&limit=100` style. |
+    | Cursor | API returns a `next_cursor` token in the response. |
+    | Link header | API returns a `Link: <url>; rel="next"` header. |
+
+    **Incremental sync** — to sync only new or updated records:
+
+    1. Enable **Incremental sync**.
+    2. Set the cursor field (e.g., `updated_at`).
+    3. Configure the request parameter that filters by the cursor (e.g., `since={{ stream_slice.start_date }}`).
+
+    ```yaml
+    incremental_sync:
+      type: DatetimeBasedCursor
+      cursor_field: updated_at
+      datetime_format: "%Y-%m-%dT%H:%M:%SZ"
+      start_datetime:
+        datetime: "{{ config['start_date'] }}"
+        datetime_format: "%Y-%m-%d"
+      end_datetime:
+        datetime: "{{ now_utc() }}"
+        datetime_format: "%Y-%m-%dT%H:%M:%SZ"
+    ```
+  </Step>
+
+  <Step title="Test your connector">
+    Use the built-in test panel in the Connector Builder to:
+
+    1. Run **Check connection** to validate credentials.
+    2. Run **Discover** to see the stream catalog and schema.
+    3. Run **Read** to fetch sample records from a stream.
+
+    The test panel shows the raw API request and response, which is useful for debugging.
+  </Step>
+
+  <Step title="Publish the connector">
+    When your connector is working correctly:
+
+    1. Click **Publish**.
+    2. Choose **Publish to workspace** to make it available only within your workspace, or **Contribute to Airbyte** to open a pull request to the public connector catalog.
+
+    Once published, the connector appears in the **Sources** catalog and can be used in connections like any other connector.
+  </Step>
+</Steps>
+
+## Declarative source definition API
+
+You can also create, update, and manage declarative (low-code) source definitions programmatically via the Airbyte API.
+
+### List declarative source definitions
+
+`GET /workspaces/{workspaceId}/definitions/declarative_sources`
+
+```bash
+curl "https://api.airbyte.com/v1/workspaces/744cc0ed-7f05-4949-9e60-2a814f90c035/definitions/declarative_sources" \
+  -H "Authorization: Bearer <token>"
+```
+
+### Create a declarative source definition
+
+`POST /workspaces/{workspaceId}/definitions/declarative_sources`
+
+The request body includes the connector manifest as a `DeclarativeManifest` JSON object.
+
+```bash
+curl -X POST "https://api.airbyte.com/v1/workspaces/744cc0ed-7f05-4949-9e60-2a814f90c035/definitions/declarative_sources" \
+  -H "Authorization: Bearer <token>" \
+  -H "Content-Type: application/json" \
+  -d '{
+    "name": "My Custom API",
+    "manifest": { ... }
+  }'
+```
+
+### Get a declarative source definition
+
+`GET /workspaces/{workspaceId}/definitions/declarative_sources/{definitionId}`
+
+### Update a declarative source definition
+
+`PUT /workspaces/{workspaceId}/definitions/declarative_sources/{definitionId}`
+
+### Delete a declarative source definition
+
+`DELETE /workspaces/{workspaceId}/definitions/declarative_sources/{definitionId}`
+
+## CDK version
+
+The Connector Builder and the low-code CDK are versioned together. The current CDK version shipped with this release of Airbyte is **7.10.0**.
+
+<Info>
+  The CDK version determines which manifest features and component types are available. When you create a connector in the Builder, the generated manifest is pinned to the CDK version at the time of creation.
+</Info>
+
+## Connector Builder in the Helm chart
+
+The Connector Builder UI is served by the `airbyte-server` component. You can configure AI-assisted features via the server values:
+
+```yaml
+server:
+  connectorBuilder:
+    aiAssistUrlBase: ""
+    githubToken: ""
+    githubTokenSecretKey: ""
+```

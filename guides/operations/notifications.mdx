@@ -1,0 +1,157 @@
+---
+title: "Notifications"
+description: "Configure email and webhook notifications for sync events such as failures, successes, and schema changes."
+---
+
+Airbyte can send notifications when sync events occur. Notifications are configured per workspace and fire for the event types you enable.
+
+## Notification types
+
+Airbyte supports two notification delivery methods:
+
+| Type | Description |
+|---|---|
+| `email` | Sends an email via Customer.io to the workspace's registered email address. |
+| `webhook` | Sends an HTTP POST to a URL you provide (for example, a Slack incoming webhook). |
+
+## Notification events
+
+You can enable or disable notifications independently for each event type:
+
+| Event | API field | Description |
+|---|---|---|
+| Sync failure | `failure` | Fires when a sync job fails. |
+| Sync success | `success` | Fires when a sync job completes successfully. |
+| Connection update | `connectionUpdate` | Fires when a connection's configuration changes. |
+| Connection update action required | `connectionUpdateActionRequired` | Fires when a breaking schema change requires manual action. |
+| Sync disabled | `syncDisabled` | Fires when a connection is automatically disabled due to repeated failures. |
+| Sync disabled warning | `syncDisabledWarning` | Fires before a connection is disabled, as a warning. |
+
+## Notification payload
+
+When a sync completes, Airbyte includes a rich `SyncSummary` in notification messages:
+
+| Field | Description |
+|---|---|
+| `workspace` | Workspace name and ID. |
+| `connection` | Connection name and ID. |
+| `source` | Source connector name and type. |
+| `destination` | Destination connector name and type. |
+| `jobId` | The job that completed. |
+| `isSuccess` | Whether the sync succeeded. |
+| `startedAt` / `finishedAt` | Sync start and end times. |
+| `bytesEmitted` / `bytesCommitted` | Data volume metrics. |
+| `recordsEmitted` / `recordsCommitted` | Record count metrics. |
+| `errorMessage` | Error description if the sync failed. |
+
+## Configuring notifications via API
+
+Notifications are set in the `notifications` field of the workspace. Configure them when creating or updating a workspace:
+
+```bash
+curl -X PATCH https://api.airbyte.com/v1/workspaces/<workspaceId> \
+  -H "Authorization: Bearer <token>" \
+  -H "Content-Type: application/json" \
+  -d '{
+    "notifications": {
+      "failure": {
+        "email": { "enabled": true },
+        "webhook": {
+          "enabled": true,
+          "url": "https://hooks.slack.com/services/T00/B00/xxx"
+        }
+      },
+      "success": {
+        "email": { "enabled": false },
+        "webhook": { "enabled": false }
+      },
+      "connectionUpdate": {
+        "email": { "enabled": true }
+      },
+      "syncDisabled": {
+        "email": { "enabled": true },
+        "webhook": {
+          "enabled": true,
+          "url": "https://hooks.slack.com/services/T00/B00/xxx"
+        }
+      }
+    }
+  }'
+```
+
+## NotificationsConfig schema
+
+The full `NotificationsConfig` object:
+
+```json
+{
+  "failure": {
+    "email": { "enabled": true },
+    "webhook": { "enabled": true, "url": "https://..." }
+  },
+  "success": {
+    "email": { "enabled": false },
+    "webhook": { "enabled": false, "url": "" }
+  },
+  "connectionUpdate": {
+    "email": { "enabled": true }
+  },
+  "connectionUpdateActionRequired": {
+    "email": { "enabled": true }
+  },
+  "syncDisabled": {
+    "email": { "enabled": true },
+    "webhook": { "enabled": true, "url": "https://..." }
+  },
+  "syncDisabledWarning": {
+    "email": { "enabled": true }
+  }
+}
+```
+
+## Configuring notifications in the UI
+
+<Steps>
+  <Step title="Open workspace settings">
+    In the sidebar, click **Settings**, then select your workspace.
+  </Step>
+  <Step title="Go to notifications">
+    Click the **Notifications** tab.
+  </Step>
+  <Step title="Enable events">
+    Toggle on the events you want to receive. For webhook notifications, paste your webhook URL.
+  </Step>
+  <Step title="Save">
+    Click **Save changes**. Notifications take effect immediately for future syncs.
+  </Step>
+</Steps>
+
+## Slack webhook setup
+
+<Steps>
+  <Step title="Create a Slack app">
+    Go to [api.slack.com/apps](https://api.slack.com/apps) and create a new app for your workspace.
+  </Step>
+  <Step title="Enable incoming webhooks">
+    Under **Features**, enable **Incoming Webhooks** and click **Add New Webhook to Workspace**.
+  </Step>
+  <Step title="Copy the webhook URL">
+    Copy the generated webhook URL (starts with `https://hooks.slack.com/services/...`).
+  </Step>
+  <Step title="Configure in Airbyte">
+    Paste the URL into the webhook `url` field in the `NotificationsConfig` for the events you care about.
+  </Step>
+</Steps>
+
+## Notification internals
+
+Notifications are sent via the `NotificationHandler` service, which dispatches to one or more configured senders:
+
+- **`SlackNotificationClient`**: Sends messages to a Slack incoming webhook URL.
+- **`CustomerioNotificationClient`** / **`CustomerIoEmailNotificationSender`**: Sends email notifications via Customer.io.
+
+The `notifications_sent`, `notification_success`, and `notification_failure` metrics track delivery outcomes. See [Metrics](/guides/operations/metrics) for details.
+
+<Note>
+  Email notifications require Customer.io integration to be configured at the platform level. In self-hosted deployments, only webhook notifications are available by default.
+</Note>

@@ -1,0 +1,143 @@
+---
+title: "Monitoring"
+description: "Monitor the health of your Airbyte deployment using health check endpoints, Kubernetes probes, and Temporal workflow monitoring."
+---
+
+Airbyte exposes health signals through HTTP health endpoints, Kubernetes liveness and readiness probes, and Temporal workflow instrumentation.
+
+## Health check endpoint
+
+The Airbyte server exposes a health endpoint you can poll to verify the service is up:
+
+```bash
+curl https://your-airbyte-host/api/v1/health
+```
+
+A healthy response:
+
+```json
+{
+  "available": true
+}
+```
+
+An unhealthy or unreachable service returns a non-2xx response or no response. Use this endpoint in load balancer health checks, uptime monitors, and alerting rules.
+
+## Kubernetes readiness and liveness probes
+
+The Airbyte Helm chart configures liveness and readiness probes for each component. You can override the probe settings in `values.yaml`:
+
+```yaml
+server:
+  livenessProbe:
+    enabled: true
+    initialDelaySeconds: 30
+    periodSeconds: 10
+    timeoutSeconds: 5
+    failureThreshold: 3
+    successThreshold: 1
+  readinessProbe:
+    enabled: true
+    initialDelaySeconds: 10
+    periodSeconds: 10
+    timeoutSeconds: 5
+    failureThreshold: 3
+    successThreshold: 1
+```
+
+Similar probe configuration is available for the `webapp` and `keycloak` components.
+
+### Probe behavior
+
+| Probe | Purpose |
+|---|---|
+| Liveness | Determines whether a container should be restarted. If the liveness probe fails, Kubernetes kills and restarts the container. |
+| Readiness | Determines whether a container is ready to accept traffic. If the readiness probe fails, the pod is removed from the service's endpoint list. |
+
+## Service components
+
+A full Airbyte deployment consists of several services. Monitor each independently:
+
+| Component | Description |
+|---|---|
+| `airbyte-server` | The main API server. Check with `GET /api/v1/health`. |
+| `airbyte-webapp` | The React frontend. Check with HTTP GET on the root path. |
+| `airbyte-temporal` | The Temporal service that manages sync workflow state. |
+| `airbyte-worker` | Executes sync jobs. Monitor via job status and Temporal workflow states. |
+| `airbyte-metrics` | Emits metrics to external backends (OTLP, StatsD). See the [Metrics guide](/guides/operations/metrics). |
+| `airbyte-keycloak` | Identity provider (Enterprise only). |
+| `airbyte-db` | PostgreSQL. Monitor database connections and query performance separately. |
+
+## Temporal workflow monitoring
+
+Airbyte uses [Temporal](https://temporal.io) to orchestrate sync workflows. Each sync job corresponds to a Temporal workflow execution.
+
+### Key metrics from Temporal
+
+| Metric | Description |
+|---|---|
+| `temporal_workflow_attempt` | Count of workflow execution attempts. |
+| `temporal_workflow_success` | Count of successful workflow completions. |
+| `temporal_workflow_failure` | Count of workflow failures. |
+| `temporal_api_transient_error_retry` | Count of transient Temporal API retries. |
+| `workflow_unreachable` | Increments when a workflow cannot be reached. |
+| `workflows_healed` | Number of workflows repaired by the self-healing cron. |
+
+These metrics are emitted to your configured metrics backend. See [Metrics](/guides/operations/metrics) for backend setup.
+
+### Temporal UI
+
+If you have access to the Temporal UI, you can inspect individual workflow executions, view stack traces for failures, and search workflows by status, workflow type, or connection ID.
+
+## Job monitoring via API
+
+Use the Jobs API to monitor sync status programmatically:
+
+```bash
+# List recent jobs for a connection
+curl "https://api.airbyte.com/v1/jobs?connectionId=<connectionId>&limit=10" \
+  -H "Authorization: Bearer <token>"
+```
+
+Job statuses to watch:
+
+| Status | Action |
+|---|---|
+| `pending` | Job is queued, waiting for a worker. Monitor for stuck pending jobs. |
+| `running` | Job is actively executing. |
+| `succeeded` | Job completed successfully. |
+| `failed` | Job failed. Inspect logs and error details. |
+| `incomplete` | Job did not complete all streams but made partial progress. |
+| `cancelled` | Job was manually cancelled. |
+
+## Container-level monitoring
+
+For Kubernetes deployments, use standard Kubernetes tooling:
+
+```bash
+# Check pod status
+kubectl get pods -n airbyte
+
+# Check logs for the server
+kubectl logs -n airbyte deployment/airbyte-server --tail=100
+
+# Check worker logs
+kubectl logs -n airbyte deployment/airbyte-worker --tail=100
+```
+
+## Alerting recommendations
+
+<AccordionGroup>
+  <Accordion title="Critical alerts">
+    - `airbyte-server` health endpoint returning non-2xx for more than 2 minutes.
+    - `temporal_workflow_failure` rate exceeds a threshold over a rolling window.
+    - Number of pending jobs (`num_pending_jobs`) growing continuously without being consumed.
+    - Oldest pending job age (`oldest_pending_job_age_secs`) exceeding your SLA.
+  </Accordion>
+  <Accordion title="Warning alerts">
+    - Sync success rate dropping below your baseline over the past 24 hours.
+    - Number of abnormal scheduled syncs (`num_abnormal_scheduled_syncs_last_day`) above zero.
+    - Number of unusually long syncs (`num_unusually_long_syncs`) increasing.
+    - Database connection pool saturation.
+  </Accordion>
+</AccordionGroup>

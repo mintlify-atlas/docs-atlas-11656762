@@ -1,0 +1,190 @@
+---
+title: "Connector definitions"
+description: "List connector definitions and manage declarative, source, and destination definitions in a workspace."
+---
+
+Connector definitions describe the available source and destination connectors. You can list all available connectors, manage custom declarative source definitions (Low-Code CDK), or manage custom Docker-based source and destination definitions.
+
+## Endpoints
+
+| Method | Path | Description |
+|---|---|---|
+| `GET` | `/connector_definitions` | List all connector definitions |
+| `GET` | `/workspaces/{workspaceId}/definitions/declarative_sources` | List declarative source definitions |
+| `POST` | `/workspaces/{workspaceId}/definitions/declarative_sources` | Create a declarative source definition |
+| `GET` | `/workspaces/{workspaceId}/definitions/declarative_sources/{definitionId}` | Get declarative source definition |
+| `PUT` | `/workspaces/{workspaceId}/definitions/declarative_sources/{definitionId}` | Update declarative source definition |
+| `DELETE` | `/workspaces/{workspaceId}/definitions/declarative_sources/{definitionId}` | Delete declarative source definition |
+| `GET` | `/workspaces/{workspaceId}/definitions/sources` | List source definitions |
+| `POST` | `/workspaces/{workspaceId}/definitions/sources` | Create a source definition |
+| `GET` | `/workspaces/{workspaceId}/definitions/sources/{definitionId}` | Get source definition |
+| `PUT` | `/workspaces/{workspaceId}/definitions/sources/{definitionId}` | Update source definition |
+| `DELETE` | `/workspaces/{workspaceId}/definitions/sources/{definitionId}` | Delete source definition |
+| `GET` | `/workspaces/{workspaceId}/definitions/destinations` | List destination definitions |
+| `POST` | `/workspaces/{workspaceId}/definitions/destinations` | Create a destination definition |
+| `GET` | `/workspaces/{workspaceId}/definitions/destinations/{definitionId}` | Get destination definition |
+| `PUT` | `/workspaces/{workspaceId}/definitions/destinations/{definitionId}` | Update destination definition |
+| `DELETE` | `/workspaces/{workspaceId}/definitions/destinations/{definitionId}` | Delete destination definition |
+
+## List connector definitions
+
+**`GET /connector_definitions`**
+
+List all connector definitions visible to a workspace or organization.
+
+<ParamField query="type" type="string" required>
+  The type of connector definitions to list: `source` or `destination`.
+</ParamField>
+
+<ParamField query="workspaceId" type="string">
+  UUID of the workspace to list connector definitions for. One of `workspaceId` or `organizationId` must be provided.
+</ParamField>
+
+```bash
+curl --request GET \
+  --url 'https://api.airbyte.com/v1/connector_definitions?type=source&workspaceId=df08f6b0-b364-4cc1-9b3f-96f5d2fccfb2' \
+  --header 'Authorization: Bearer <token>'
+```
+
+### Response
+
+<ResponseField name="data" type="object[]" required>
+  Array of connector definition objects.
+  <Expandable title="connector definition object">
+    <ResponseField name="id" type="string" required>
+      UUID of the connector definition.
+    </ResponseField>
+    <ResponseField name="name" type="string" required>
+      Human-readable name, e.g. `Postgres`.
+    </ResponseField>
+    <ResponseField name="connectorDefinitionType" type="string" required>
+      Either `source` or `destination`.
+    </ResponseField>
+    <ResponseField name="version" type="string" required>
+      Current version of the connector, e.g. `0.2.0`.
+    </ResponseField>
+  </Expandable>
+</ResponseField>
+
+## Declarative source definitions
+
+Declarative source definitions are Low-Code CDK connectors defined using a YAML manifest.
+
+### List declarative source definitions
+
+**`GET /workspaces/{workspaceId}/definitions/declarative_sources`**
+
+<ParamField path="workspaceId" type="string" required>
+  UUID of the workspace.
+</ParamField>
+
+### Create a declarative source definition
+
+**`POST /workspaces/{workspaceId}/definitions/declarative_sources`**
+
+<ParamField path="workspaceId" type="string" required>
+  UUID of the workspace.
+</ParamField>
+
+<ParamField body="name" type="string" required>
+  Name of the connector.
+</ParamField>
+
+<ParamField body="manifest" type="object" required>
+  Low-Code CDK manifest JSON object describing the connector.
+</ParamField>
+
+```bash
+curl --request POST \
+  --url https://api.airbyte.com/v1/workspaces/df08f6b0-b364-4cc1-9b3f-96f5d2fccfb2/definitions/declarative_sources \
+  --header 'Authorization: Bearer <token>' \
+  --header 'Content-Type: application/json' \
+  --data '{
+    "name": "My Custom API",
+    "manifest": { ... }
+  }'
+```
+
+### Response fields for declarative source definitions
+
+<ResponseField name="id" type="string" required>
+  UUID of the declarative source definition.
+</ResponseField>
+
+<ResponseField name="name" type="string" required>
+  Name of the connector.
+</ResponseField>
+
+<ResponseField name="manifest" type="object" required>
+  The Low-Code CDK manifest.
+</ResponseField>
+
+<ResponseField name="version" type="integer" required>
+  Version number of the manifest.
+</ResponseField>
+
+### Update a declarative source definition
+
+**`PUT /workspaces/{workspaceId}/definitions/declarative_sources/{definitionId}`**
+
+<ParamField path="workspaceId" type="string" required>
+  UUID of the workspace.
+</ParamField>
+
+<ParamField path="definitionId" type="string" required>
+  UUID of the definition to update.
+</ParamField>
+
+<ParamField body="manifest" type="object" required>
+  Updated Low-Code CDK manifest.
+</ParamField>
+
+## Source and destination definitions
+
+Source and destination definitions refer to Docker-based connectors registered in a workspace.
+
+### Create a source definition
+
+**`POST /workspaces/{workspaceId}/definitions/sources`**
+
+<ParamField path="workspaceId" type="string" required>
+  UUID of the workspace.
+</ParamField>
+
+<ParamField body="name" type="string" required>
+  Name of the connector.
+</ParamField>
+
+<ParamField body="dockerRepository" type="string" required>
+  Docker repository for the connector image, e.g. `airbyte/source-postgres`.
+</ParamField>
+
+<ParamField body="dockerImageTag" type="string" required>
+  Docker image tag, e.g. `1.0.0`.
+</ParamField>
+
+<ParamField body="documentationUrl" type="string">
+  URL to the connector documentation.
+</ParamField>
+
+### Response fields for source/destination definitions
+
+<ResponseField name="id" type="string" required>
+  UUID of the definition.
+</ResponseField>
+
+<ResponseField name="name" type="string" required>
+  Connector name.
+</ResponseField>
+
+<ResponseField name="dockerRepository" type="string" required>
+  Docker repository for the connector image.
+</ResponseField>
+
+<ResponseField name="dockerImageTag" type="string" required>
+  Docker image tag.
+</ResponseField>
+
+<ResponseField name="documentationUrl" type="string">
+  Documentation URL.
+</ResponseField>
